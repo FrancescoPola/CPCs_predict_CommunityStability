@@ -2,7 +2,7 @@
 rm(list = ls())
 
 
-Sys.setenv(GITHUB_PAT = "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")
+
 remotes::install_github("opetchey/community.simulator",
                        build_vignettes = TRUE, force = TRUE)
 
