@@ -2,11 +2,6 @@
 rm(list = ls())
 
 
-
-remotes::install_github("opetchey/community.simulator",
-                       build_vignettes = TRUE, force = TRUE)
-
-
 ## Use the next line to add a package to the DESCRIPTION file
 #usethis::use_package("dplyr")
 
