@@ -14,4 +14,5 @@ experiments: folder contains 3 sub-folders
   - final: results of the simulations obtained with the code contained in the .R documented called "run_simulations". It is composed of several datasets that are needed to run the files in "Reports".
   - plot_effect_interactions: subset of "final" used to plot the effects of interspecific interactions on species dynamics (figure S4)
 
-Run_simulations: code and .JSON file needed to reproduce the simulations.
+run_simulations.R: code and .JSON file needed to reproduce the simulations.
+empirical_example.r: code that analyses the empirical example and prepare dataset for Fig.4 of the manuscript
