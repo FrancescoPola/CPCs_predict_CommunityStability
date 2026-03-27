@@ -538,9 +538,9 @@ results <- results %>%
   mutate(
     model = factor(
       model,
-      levels = c("info", "naive", "trait_summaries"),
+      levels = c("actual", "null", "trait_summaries"),
       labels = c(
-        "Informed",
+        "Actual",
         "null",
         "Trait summaries"
       )
@@ -559,8 +559,8 @@ results <- results %>%
 # preparing figure 2 of the main text
 # Facet labels
 facet_labs <- c(
-  "informed" = "CPC (informed)",
-  "naive"    = "CPC (naive)"
+  "informed" = "CPC (actual)",
+  "naive"    = "CPC (null)"
 )
 
 
@@ -616,8 +616,6 @@ p <- ggplot(results, aes(x = alpha_ij_mean, y = r2)) +
     ))
   ) +
   ggplot2::ylim(0.2,1)
-
-
 
 ```
 ### Random subsets and Random forest

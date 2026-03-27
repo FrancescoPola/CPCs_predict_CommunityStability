@@ -416,7 +416,7 @@ community_stats <- community_optima_merged %>%
   group_by(composition, temperature, nutrients) %>%
   summarise(
     mean_opt = mean(temp_opt, na.rm = TRUE),
-    var_opt = var(temp_opt, na.rm = TRUE),
+    var_opt = sd(temp_opt, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -544,7 +544,7 @@ empirical_results_summary_stats1 <- left_join(empirical_results_summary_stats, d
 
 # define your models in a list
 models <- list(
-  naive = as.formula("log10(CV) ~ log10(cv_com)"),
+  naive = as.formula("log10(CV) ~ log10(cv_com.x)"),
   var   = as.formula("log10(CV) ~ var_opt"),
   mean    = as.formula("log10(CV) ~ mean_opt"),
   trait_summaries = as.formula("log10(CV) ~ var_opt * mean_opt"))
