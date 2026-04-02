@@ -4,7 +4,7 @@ This repository contains data, analysis, and supplementary materials for the man
 
 IMPORTANT: to run the simulations you need to install the newly developed package "community.simulator", available here: https://github.com/opetchey/community.simulator
 
-Contents - there 3 folders:
+Contents - there are 3 folders:
 
 Code: folder contains 3 R scripts
   - empirical example.r: code for reproducing the results  relative to the empirical example reported in the manuscript.
