@@ -1,4 +1,4 @@
-Community performance curves predict community stability despite interaction effects
+# Community performance curves predict community stability despite interaction effects
 
 This repository contains data, analysis, and supplementary materials for the manuscript titled "Community performance curves predict community stability despite interaction effects".
 
