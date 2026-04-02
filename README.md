@@ -9,7 +9,7 @@ Contents - there are 3 folders:
 Code: folder contains 3 R scripts
   - empirical example.r: code for reproducing the results  relative to the empirical example reported in the manuscript.
   - run_simulations_complete.R: code for running the complete simulations used in the part called "simulation study" in the manuscript.
-  - run_simulations_small.R: code for running a reduced version of the simulations, for reviewers.
+  - run_simulations_small.R: code for running a reduced version of the simulations, for reviewers. It allows to create and save the species dynamics for the specific subset.
   
 
 Data: Contains 3 other folders:
