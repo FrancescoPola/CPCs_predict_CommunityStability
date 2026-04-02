@@ -4,29 +4,39 @@ This repository contains data, analysis, and supplementary materials for the man
 
 IMPORTANT: to run the simulations you need to install the newly developed package "community.simulator", available here: https://github.com/opetchey/community.simulator
 
-Contents - there 3 folders:
+Repository structure:
 
-Code: folder contains 3 R scripts
-  - empirical example.r: code for reproducing the results  relative to the empirical example reported in the manuscript.
-  - run_simulations_complete.R: code for running the complete simulations used in the part called "simulation study" in the manuscript.
-  - run_simulations_small.R: code for running a reduced version of the simulations, for reviewers. The code is the same. What changes is the .JSON file that creates the simulations. Running the complete code and generate the related species dynamics is computationally very heavy. The file final_small_v0.7.json is a reduced version of the simulation design, containing only two species‑richness levels (2 and 4), a narrow range of thermal‑optimum treatments (means 16–18 °C and ranges 6–8 °C), and only two levels of performance‑curve breadth (means 6–8 and ranges 0–2). It also uses just two community replicates and two environmental replicates, making it suitable for quick test runs or debugging. 
-In contrast, final_v0.7.json encodes the full simulation design used in the CPC manuscript: four richness levels (2, 4, 8, 16), a broader range of thermal‑optimum treatments (means 16–24 °C and ranges 6–14 °C), an expanded set of performance‑curve breadths (means 6–14 and ranges 0–10), and five community × five environmental replicates. This version produces the complete factorial dataset used in the main analyses.
-  
+- simulation_study
+  - organized by simulation run rather than by file type.
+  - `final`: full simulation run with `code`, `data`, and `reports` subfolders.
+  - `final_small`: reduced simulation run for reviewers with `code`, `data`, and `reports` subfolders.
+  - `plot_effect_interactions`: subset of the simulation outputs used to plot the effects of interspecific interactions on species dynamics (Figure S4), also arranged into `code`, `data`, and `reports`.
+    This is a curated slice of the broader simulation study used for figures that compare otherwise similar communities under different interaction strengths, so the direct effect of interactions on community dynamics can be visualized clearly.
+  - each simulation-run folder contains its own `README.md` describing the purpose of that run and the files in it.
 
-Data: Contains 3 other folders:
-- empirical study: datasets needed for running the code called "empirical example.r" in the folder "code", and reproduce the results relative to the empirical example presented in the manuscript.
+- empirical_study
+  - code/empirical_example.R: code for reproducing the empirical example reported in the manuscript.
+  - data: datasets required by the empirical analysis, including the derived summary table.
 
-- review: contains the .xls file with the results of the literature review which reports which studies have been included and why, and why the other have been excluded.
+- literature_review
+  - data/literature_file.xls: screening and extraction file for the literature review.
 
--simulation study: contains the folder called "experiments" with another 3 subfolders:
+- reports
+  - extended_results.qmd and extended_results.html: integrated reproducible report spanning the simulation study, empirical study, and literature review.
 
- . final: datasets and files to reproduce the full simulation study.
- . final small: reduced version of the simulation study for reviewers.
- . plot_effect_interactions: subset of "final" used to plot the effects of interspecific interactions on species dynamics (figure S4)
+Simulation scripts:
 
-reports: folder containing the .html and .qmd files containing all the code to completely reproduce the analyses and figures presented in the manuscript, plus some additional figures.
+- simulation_study/final/code/run_simulations_complete.R runs the full simulation study used in the manuscript.
+- simulation_study/final_small/code/run_simulations_small.R runs a reduced version for quick checks and reviewer use.
 
+Simulation design files:
 
+- `simulation_study/final/data/final_v0.7.json` is the design file for the full manuscript simulation run.
+- `simulation_study/final_small/data/final_small_v0.7.json` is the design file for the reduced reviewer-oriented run.
+- `simulation_study/plot_effect_interactions/data/plot_effect_interactions_v0.7.json` is the design file for the interaction-effects subset.
 
+The file `final_small_v0.7.json` is a reduced simulation design containing only two species-richness levels (2 and 4), a narrow range of thermal-optimum treatments (means 16-18 C and ranges 6-8 C), two levels of performance-curve breadth (means 6-8 and ranges 0-2), and two community and environmental replicates.
 
-LICESNSE.md : MIT license
+In contrast, `final_v0.7.json` encodes the full simulation design used in the manuscript: four richness levels (2, 4, 8, 16), a broader range of thermal-optimum treatments (means 16-24 C and ranges 6-14 C), an expanded set of performance-curve breadths (means 6-14 and ranges 0-10), and five community by five environmental replicates.
+
+LICENSE.md: MIT license

@@ -359,7 +359,7 @@ Panels (a), (d), (g), and (j) show species specific thermal performance curves (
 
 ```{r}
 #| echo: false
-literature_file <- read_excel(here("Data/review/literature_file.xls"), 
+literature_file <- read_excel(here("literature_review", "data", "literature_file.xls"), 
                              sheet = "Sheet1")
 
 # Prepare data --------------------------------------------------------------
@@ -494,9 +494,9 @@ The upper Sankey diagram illustrates the associations between study type (experi
 
 ## Importing results from the simuations 
 
-experiment_folder_location <- here("experiments")
-experiment_name <- "final"
-experiment_design_filename <-  "rerun_final_sim_v0.7.json"
+experiment_folder_location <- here("simulation_study", "final")
+experiment_name <- "data"
+experiment_design_filename <-  "final_v0.7.json"
 
 ## create folder for experiment, if it does not already exist
 experiment_folder <- create_experiment_folder(experiment_folder_location, experiment_name)
@@ -538,10 +538,10 @@ results <- results %>%
   mutate(
     model = factor(
       model,
-      levels = c("actual", "null", "trait_summaries"),
+      levels = c("info", "naive", "trait_summaries"),
       labels = c(
         "Actual",
-        "null",
+        "Null",
         "Trait summaries"
       )
     )
@@ -559,8 +559,8 @@ results <- results %>%
 # preparing figure 2 of the main text
 # Facet labels
 facet_labs <- c(
-  "informed" = "CPC (actual)",
-  "naive"    = "CPC (null)"
+  "Actual" = "CPC (actual)",
+  "Null"    = "CPC (null)"
 )
 
 
@@ -610,8 +610,8 @@ p <- ggplot(results, aes(x = alpha_ij_mean, y = r2)) +
     ~ model,
     scales = "free_y",
     labeller = as_labeller(c(
-      Informed  = "CV of Actual \ncommunity performance",
-      null  = "CV of null \ncommunity performance",
+      Actual  = "CV of Actual \ncommunity performance",
+      Null  = "CV of null \ncommunity performance",
       "Trait summaries" = "Trait summaries"
     ))
   ) +
@@ -641,9 +641,9 @@ comm_r2 <- comm_data |>
   )
 
 # plot result
-ggplot(comm_r2, aes(x = alpha_ij_mean, y = r_sq)) +
-  geom_point() +
-  ylim(0, 1)
+#ggplot(comm_r2, aes(x = alpha_ij_mean, y = r_sq)) +
+#  geom_point() +
+#  ylim(0, 1)
 
 # divide the dataset into 1000 random subsets
 set.seed(123)
@@ -806,7 +806,9 @@ Figure 3. Explanatory power and Random Forest modeling of community stability me
 #| fig.height: 8
 #| warning: FALSE
 
-empirical_results_summary_stats <- read.csv(here("Data/empirical_results_summary.csv"))
+empirical_results_summary_stats <- read.csv(
+  here("empirical_study", "data", "empirical_results_summary.csv")
+)
 
 # Plot CV of biomass vs mean and variance of optima
 p1 <- ggplot(empirical_results_summary_stats, aes(x = var_opt, y = log10(CV))) +
@@ -1232,8 +1234,8 @@ make_plots_for_one_community <- function(experiment_folder, case_id_oi) {
 # ---------------------------------------------------------------
 # Load experiment
 # ---------------------------------------------------------------
-experiment_folder_location <- here("experiments")
-experiment_name <- "plot_effect_interactions"
+experiment_folder_location <- here("simulation_study", "plot_effect_interactions")
+experiment_name <- "data"
 experiment_folder <- create_experiment_folder(experiment_folder_location, experiment_name)
 
 expt <- readRDS(paste0(experiment_folder, "experiment_table.RDS"))
@@ -1502,9 +1504,6 @@ final_plot <-
 
 final_plot
 ```
-
-
-
 
 
 

@@ -1,0 +1,166 @@
+---
+title: "Interaction-Effects Subset Analysis"
+format:
+  html:
+    toc: true
+    code-fold: false
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+library(tidyverse)
+library(here)
+library(DBI)
+library(RSQLite)
+library(dbplyr)
+library(patchwork)
+
+experiment_folder <- here("simulation_study", "plot_effect_interactions", "data")
+
+expt <- readRDS(file.path(experiment_folder, "experiment_table.RDS"))
+community_measures <- readRDS(file.path(experiment_folder, "community_measures.RDS")) %>%
+  semi_join(expt, by = "case_id")
+
+conn_temperatures <- dbConnect(SQLite(), file.path(experiment_folder, "temperatures.db"))
+temperatures <- tbl(conn_temperatures, "temperatures")
+
+conn_dynamics <- dbConnect(SQLite(), file.path(experiment_folder, "dynamics.db"))
+dynamics <- tbl(conn_dynamics, "dynamics")
+
+conn_arbitrary_derivs <- dbConnect(SQLite(), file.path(experiment_folder, "arbitrary_derivs.db"))
+arbitrary_derivs <- tbl(conn_arbitrary_derivs, "derivs")
+
+get_alpha_label <- function(expt, case_id) {
+  alpha_val <- expt %>%
+    filter(case_id == !!case_id) %>%
+    pull(alpha_ij_mean) %>%
+    unique()
+
+  paste0("Interaction strength (alpha_ij mean) = ", signif(alpha_val, 3))
+}
+
+make_plots_for_one_community <- function(case_id_oi) {
+  env_series_oi <- expt %>%
+    filter(case_id == case_id_oi) %>%
+    pull(env_series_id)
+
+  temperatures_oi <- collect(filter(temperatures, env_series_id == env_series_oi))
+  species_pars_oi <- collect(filter(arbitrary_derivs, case_id == case_id_oi))
+  dynamics_oi <- collect(filter(dynamics, case_id == case_id_oi))
+
+  p_tempseries <- ggplot(temperatures_oi, aes(time, temperature)) +
+    geom_line() +
+    theme_bw()
+
+  p_igrtemp <- ggplot(species_pars_oi, aes(temperature, igr, col = species_id)) +
+    geom_line() +
+    theme_bw()
+
+  p_dynamics <- ggplot(dynamics_oi, aes(time, log10(Abundance), col = Species_ID)) +
+    geom_line() +
+    ylim(c(0, 2.5)) +
+    theme_bw()
+
+  list(
+    p_tempseries = p_tempseries,
+    p_igrtemp = p_igrtemp,
+    p_dynamics = p_dynamics
+  )
+}
+```
+
+# Subset Overview
+
+```{r}
+tibble(
+  n_cases = nrow(expt),
+  n_community_seeds = n_distinct(expt$community_seed),
+  n_alpha_levels = n_distinct(expt$alpha_ij_mean),
+  richness_values = paste(sort(unique(expt$richness)), collapse = ", ")
+)
+
+community_measures %>%
+  select(alpha_ij_mean, alpha_ij_sd, richness, real_mean_b_opt, real_sd_b_opt, CV_totab, sync_ab, pop_CV_ab) %>%
+  summary()
+```
+
+# Trait-Based Exploration
+
+```{r}
+community_measures |>
+  filter(real_mean_b_opt > 16 & real_mean_b_opt < 24) |>
+  ggplot(aes(x = abs(20 - real_mean_b_opt),
+             y = CV_totab,
+             col = as_factor(alpha_ij_mean),
+             shape = as_factor(richness))) +
+  geom_point() +
+  facet_wrap(~ alpha_ij_sd)
+
+community_measures |>
+  filter(real_mean_b_opt > 16 & real_mean_b_opt < 24) |>
+  ggplot(aes(x = real_sd_b_opt,
+             y = CV_totab,
+             col = as_factor(alpha_ij_mean),
+             shape = as_factor(richness))) +
+  geom_point() +
+  facet_wrap(~ alpha_ij_sd)
+
+community_measures |>
+  filter(real_mean_b_opt > 16 & real_mean_b_opt < 24) |>
+  ggplot(aes(x = sync_ab,
+             y = CV_totab,
+             col = as_factor(alpha_ij_mean),
+             shape = as_factor(richness))) +
+  geom_point()
+
+mod1 <- filter(
+  community_measures,
+  real_mean_b_opt > 16 & real_mean_b_opt < 24
+) %>%
+  lm(CV_totab ~ abs(20 - real_mean_b_opt) + real_sd_b_opt + alpha_ij_mean, data = .)
+
+summary(mod1)
+```
+
+# Interaction-Effects Comparison
+
+```{r}
+sub <- expt %>%
+  filter(community_seed == 662714) %>%
+  arrange(alpha_ij_mean)
+
+case_id_1 <- sub$case_id[1]
+case_id_2 <- sub$case_id[min(6, nrow(sub))]
+
+alpha_lab_1 <- get_alpha_label(expt, case_id_1)
+alpha_lab_2 <- get_alpha_label(expt, case_id_2)
+
+graphs_1 <- make_plots_for_one_community(case_id_1)
+graphs_2 <- make_plots_for_one_community(case_id_2)
+
+plot_no_int <-
+  (graphs_1$p_igrtemp + labs(subtitle = alpha_lab_1)) /
+  graphs_1$p_tempseries /
+  graphs_1$p_dynamics
+
+plot_yes_int <-
+  (graphs_2$p_igrtemp + labs(subtitle = alpha_lab_2)) /
+  graphs_2$p_tempseries /
+  graphs_2$p_dynamics
+
+(plot_no_int | plot_yes_int) +
+  plot_annotation(
+    title = "Effect of interaction strength on community dynamics",
+    subtitle = "All parameters identical except mean interaction strength",
+    theme = theme(plot.title = element_text(hjust = 0.5))
+  )
+```
+
+```{r}
+dbDisconnect(conn_temperatures)
+dbDisconnect(conn_dynamics)
+dbDisconnect(conn_arbitrary_derivs)
+```
