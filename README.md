@@ -39,4 +39,14 @@ The file `final_small_v0.7.json` is a reduced simulation design containing only 
 
 In contrast, `final_v0.7.json` encodes the full simulation design used in the manuscript: four richness levels (2, 4, 8, 16), a broader range of thermal-optimum treatments (means 16-24 C and ranges 6-14 C), an expanded set of performance-curve breadths (means 6-14 and ranges 0-10), and five community by five environmental replicates.
 
+Note on omitted full-run files:
+
+- Not all output files for `simulation_study/final` are included in this GitHub repository because some are too large to store conveniently here.
+- The files currently missing from `simulation_study/final/data` are:
+  - `dynamics.db`
+  - `temporal_derivs.db`
+  - `arbitrary_derivs.db`
+  - `delta_igr.db`
+- These files will be made available from a cloud storage location to be added here.
+
 LICENSE.md: MIT license

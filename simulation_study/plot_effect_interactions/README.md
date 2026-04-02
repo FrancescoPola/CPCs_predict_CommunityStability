@@ -16,13 +16,11 @@ Folder structure:
   - `plot_effect_interactions_v0.7.json`: simulation design file for this subset.
   - `experiment_table.RDS`: generated experiment table.
   - `community_measures.RDS`: community summary metrics.
-  - `community_measures_new.RDS`: alternate or updated community summary metrics.
   - `temperatures.db`: simulated temperature time series.
   - `dynamics.db`: simulated species dynamics.
   - `temporal_derivs.db`: temporal derivative outputs.
   - `arbitrary_derivs.db`: arbitrary derivative outputs.
   - `delta_igr.db`: delta intrinsic-growth-rate outputs.
-  - `imbalance.db`: additional imbalance outputs used in this subset.
 
 - `reports`
   - `analysis.qmd`: exploratory report for the interaction-effects subset, including summary plots and the paired-case interaction comparison used in the manuscript workflow.
