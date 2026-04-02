@@ -1,15 +1,16 @@
-# Community performance curves predict community stability despite interaction effects
+Community performance curves predict community stability despite interaction effects
 
 This repository contains data, analysis, and supplementary materials for the manuscript titled "Community performance curves predict community stability despite interaction effects".
 
 IMPORTANT: to run the simulations you need to install the newly developed package "community.simulator", available here: https://github.com/opetchey/community.simulator
 
-Contents - there are 3 folders:
+Contents - there 3 folders:
 
 Code: folder contains 3 R scripts
   - empirical example.r: code for reproducing the results  relative to the empirical example reported in the manuscript.
   - run_simulations_complete.R: code for running the complete simulations used in the part called "simulation study" in the manuscript.
-  - run_simulations_small.R: code for running a reduced version of the simulations, for reviewers. It allows to create and save the species dynamics for the specific subset.
+  - run_simulations_small.R: code for running a reduced version of the simulations, for reviewers. The code is the same. What changes is the .JSON file that creates the simulations. Running the complete code and generate the related species dynamics is computationally very heavy. The file final_small_v0.7.json is a reduced version of the simulation design, containing only two species‑richness levels (2 and 4), a narrow range of thermal‑optimum treatments (means 16–18 °C and ranges 6–8 °C), and only two levels of performance‑curve breadth (means 6–8 and ranges 0–2). It also uses just two community replicates and two environmental replicates, making it suitable for quick test runs or debugging. 
+In contrast, final_v0.7.json encodes the full simulation design used in the CPC manuscript: four richness levels (2, 4, 8, 16), a broader range of thermal‑optimum treatments (means 16–24 °C and ranges 6–14 °C), an expanded set of performance‑curve breadths (means 6–14 and ranges 0–10), and five community × five environmental replicates. This version produces the complete factorial dataset used in the main analyses.
   
 
 Data: Contains 3 other folders:
