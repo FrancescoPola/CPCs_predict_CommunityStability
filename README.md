@@ -39,15 +39,8 @@ The file `final_small_v0.7.json` is a reduced simulation design containing only 
 
 In contrast, `final_v0.7.json` encodes the full simulation design used in the manuscript: four richness levels (2, 4, 8, 16), a broader range of thermal-optimum treatments (means 16-24 C and ranges 6-14 C), an expanded set of performance-curve breadths (means 6-14 and ranges 0-10), and five community by five environmental replicates.
 
-Note on omitted full-run files:
+Note on omitted full-run (final) file:
 
-- Not all output files for `simulation_study/final` are included in this GitHub repository because some are too large to store conveniently here.
-- The files currently missing from `simulation_study/final/data` are:
-  - `dynamics.db`
-  - `temporal_derivs.db`
-  - `arbitrary_derivs.db`
-  - `delta_igr.db`
-- All these files are not computationally heavy to generate, except for `dynamics.db`, which is the only one essential for reproducing the results and it is 
-  available from a cloud storage location to be added here (waiting for Zenodo approval uploading large data set).
-
+- The data files in `simulation_study/final` do not include the `dynamics.db` file. This file is 54GB and contains the full time series of species abundances for all simulations. The following link will begin download from cloud storage [download dynamics.db now!](https://uzh-my.sharepoint.com/:u:/g/personal/owen_petchey_ieu_uzh_ch/IQDvXN55HfRBS42kj8GvwjZXAah3PwaaFKUJQ7klmMvdFkY?e=rG0TZe). This link will expire on 7th May 2026.).
+ 
 LICENSE.md: MIT license

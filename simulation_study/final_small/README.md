@@ -11,10 +11,7 @@ Folder structure:
   - `community_measures.RDS`: derived community-level summary metrics.
   - `temperatures.db`: simulated temperature time series.
   - `dynamics.db`: simulated species dynamics.
-  - `temporal_derivs.db`: temporal derivative outputs.
-  - `arbitrary_derivs.db`: arbitrary derivative outputs.
-  - `delta_igr.db`: delta intrinsic-growth-rate outputs.
-
+ 
 - `reports`
   - `analysis.qmd`: exploratory plots and model fits for this run.
 

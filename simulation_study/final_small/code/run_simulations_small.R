@@ -54,7 +54,7 @@ if (!all(file.exists(required_outputs))) {
         experiment_folder_location = experiment_folder_location,
         experiment_name = experiment_name,
         experiment_design_filename = experiment_design_filename,
-        overwrite = FALSE,
+        overwrite = TRUE,
         verbose = TRUE
       )
     )
