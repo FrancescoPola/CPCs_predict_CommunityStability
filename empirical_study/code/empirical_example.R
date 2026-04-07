@@ -624,17 +624,78 @@ summary(lm(log10(CV) ~ mean_opt, data = empirical_results_summary_stats1))
 summary(lm(log10(CV) ~ var_opt * mean_opt, data = empirical_results_summary_stats1))
 summary(lm(log10(CV) ~ log10(cv_com.x ), data = empirical_results_summary_stats1))
 
-ggplot(empirical_results_summary_stats, aes(x = log10(distance_mean_env), y = log10(CV), col = richness)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = TRUE) +
-  theme_bw() +
-  labs(
-    x = "Log10 CV of community performance",
-    y = "Log10 CV of empirical of community biomass"
-  ) +
-  facet_wrap(temperature~nutrients)
 
+# ==============================================================================
+# LINEAR MODEL SUMMARY TABLES (COEFFICIENTS + R-SQUARED) / These are presented in the main text
+# ==============================================================================
 
+library(dplyr)
+library(broom)
+library(purrr)
+library(gt)
+library(flextable)
+
+# 1. Run Models ----------------------------------------------------------------
+models_list <- list(
+  "Model 1: Var Opt"      = lm(log10(CV) ~ var_opt, data = empirical_results_summary_stats1),
+  "Model 2: Mean Opt"     = lm(log10(CV) ~ mean_opt, data = empirical_results_summary_stats1),
+  "Model 3: Interaction"  = lm(log10(CV) ~ var_opt * mean_opt, data = empirical_results_summary_stats1),
+  "Model 4: Log CV Com"   = lm(log10(CV) ~ log10(cv_com.x), data = empirical_results_summary_stats1)
+)
+
+# 2. Extract Data (Tidy & Glance) ----------------------------------------------
+
+# Extract coefficients (slopes, intercepts, p-values)
+all_coefs <- map_dfr(models_list, tidy, .id = "Model")
+
+# Extract model-level fit statistics (R-squared)
+all_glance <- map_dfr(models_list, glance, .id = "Model") %>%
+  select(Model, r.squared, adj.r.squared)
+
+# Combine into a master data frame for formatting
+master_table_df <- all_coefs %>%
+  left_join(all_glance, by = "Model") %>%
+  rename(Predictor = term)
+
+# ==============================================================================
+# 3. VERSION A: GT TABLE
+# ==============================================================================
+gt_table <- master_table_df %>%
+  gt(groupname_col = "Model") %>%
+  cols_label(
+    Predictor = "Term",
+    estimate = "Estimate",
+    std.error = "Std. Error",
+    p.value = "p-value",
+    r.squared = "R²",
+    adj.r.squared = "Adj. R²"
+  ) %>%
+  fmt_number(
+    columns = c(estimate, std.error, r.squared, adj.r.squared),
+    decimals = 3
+  ) %>%
+  # Scientific notation for very small p-values
+  fmt_scientific(
+    columns = p.value,
+    rows = p.value < 0.001
+  ) %>%
+  # Standard notation for larger p-values
+  fmt_number(
+    columns = p.value,
+    rows = p.value >= 0.001,
+    decimals = 3
+  ) %>%
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_body(columns = p.value, rows = p.value < 0.05)
+  ) %>%
+  tab_options(
+    table.width = px(850),
+    table.font.size = px(12),
+    row_group.font.weight = "bold"
+  )
+
+print(gt_table)
 
 
 
@@ -651,48 +712,3 @@ temp_optima <- df_performance %>%
 
 temp_optima
 
-# Calculate mean and variance of optima for each community
-species_map <- c(
-  C = "Colpidium",
-  D = "Dexiostoma",
-  P = "Paramecium",
-  L = "Loxocephalus",
-  S = "Spirostomum"
-)
-
-
-community_species <- info_communities %>%
-  mutate(species_initial = strsplit(composition, "")) %>%  # split letters
-  unnest(species_initial) %>%                               # one row per species
-  mutate(species = species_map[species_initial])           # map letters to full species names
-
-# Step 2: Merge with species temp_optima
-community_optima_merged <- community_species %>%
-  left_join(temp_optima, by = c("species"))
-
-# View the merged dataset
-community_optima_merged
-
-community_stats <- community_optima_merged %>%
-  group_by(composition, temperature, nutrients) %>%
-  summarise(
-    mean_opt = mean(temp_opt, na.rm = TRUE),
-    var_opt = var(temp_opt, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-
-# Merge with empirical results
-empirical_results_summary_stats <- full_join(empirical_results, community_stats,
-                                             by = c("composition", "temperature", "nutrients"))
-
-
-# Plot CV of biomass vs mean and variance of optima
-p1 <- ggplot(empirical_results_summary_stats, aes(x = var_opt, y = log10(CV))) +
-  geom_point() +
-  geom_smooth(method = "lm", se = TRUE) +
-  theme_bw() +
-  labs(
-    x = "Mean of species' thermal optima (°C)",
-    y = "Log10 CV of empirical community biomass"
-  )

@@ -47,6 +47,7 @@ Note on omitted full-run files:
   - `temporal_derivs.db`
   - `arbitrary_derivs.db`
   - `delta_igr.db`
-- These files will be made available from a cloud storage location to be added here.
+- All these files are not computationally heavy to generate, except for `dynamics.db`, which is the only one essential for reproducing the results and it is 
+  available from a cloud storage location to be added here (waiting for Zenodo approval uploading large data set).
 
 LICENSE.md: MIT license
