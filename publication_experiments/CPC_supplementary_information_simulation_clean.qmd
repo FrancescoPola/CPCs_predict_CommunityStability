@@ -1,0 +1,2057 @@
+---
+title: "Supplementary Information 2 - Simulation studies"
+subtitle: "Community performance variability as a predictor of community stability"
+authors: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Owen L. Petchey"
+editor: source
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: false
+format:
+  html:
+    page-layout: full
+    html-math-method: mathml
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    toc-expand: true
+    embed-resources: true
+    code-fold: true
+    code-summary: "Show code"
+    number-sections: true
+crossref:
+  fig-title: Figure S
+  tbl-title: Table S
+  fig-prefix: Figure S
+  tbl-prefix: Table S
+  custom:
+    - kind: float
+      key: suppfig
+      latex-env: suppfig
+      reference-prefix: Figure S
+      caption-prefix: Figure S
+      space-before-numbering: false
+
+    - kind: float
+      key: supptbl
+      latex-env: supptbl
+      reference-prefix: Table S
+      caption-prefix: Table S
+      space-before-numbering: false
+---
+
+
+
+```{r setup}
+library(dplyr)
+library(forcats)
+library(ggdist)
+library(ggplot2)
+library(knitr)
+library(patchwork)
+library(purrr)
+library(ranger)
+library(tibble)
+library(tidyr)
+library(viridisLite)
+
+experiment_root <- "/Users/francesco/Documents/GitHub/CPCs_predict_CommunityStability/publication_experiments/data"
+selected_experiments <- c("LV1", "LV2", "CR1", "CR2")
+
+`%||%` <- function(x, y) {
+  if (is.null(x) || length(x) == 0) y else x
+}
+
+theme_figure <- function(base_size = 12) {
+  theme_bw(base_size = base_size) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_line(colour = "grey92"),
+      strip.text = element_text(face = "bold"),
+      legend.position = "bottom"
+    )
+}
+
+theme_concept <- function(base_size = 12) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "none",
+      plot.title = element_text(hjust = 0.5, size = base_size),
+      plot.subtitle = element_text(hjust = 0.5, size = base_size - 1)
+    )
+}
+
+theme_clean <- function(base_size = 12) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      panel.grid.minor = element_blank(),
+      strip.text = element_text(face = "bold", colour = "black"),
+      legend.position = "bottom",
+      plot.tag = element_text(face = "bold")
+    )
+}
+
+format_experiment_label <- function(x) {
+  recode(
+    x,
+    LV1 = "LV 1",
+    LV2 = "LV 2",
+    CR1 = "CR 1",
+    CR2 = "CR 2"
+  )
+}
+
+case_spec_value <- function(case_spec, path, default = NA) {
+  parts <- strsplit(path, ".", fixed = TRUE)[[1]]
+  value <- case_spec
+  for (part in parts) {
+    if (!is.list(value) || is.null(value[[part]])) {
+      return(default)
+    }
+    value <- value[[part]]
+  }
+  if (length(value) != 1) {
+    return(default)
+  }
+  value
+}
+
+case_spec_numeric <- function(data, path, default = NA_real_) {
+  vapply(
+    data$case_spec,
+    function(spec) as.numeric(case_spec_value(spec, path, default)),
+    numeric(1)
+  )
+}
+
+case_spec_character <- function(data, path, default = NA_character_) {
+  vapply(
+    data$case_spec,
+    function(spec) as.character(case_spec_value(spec, path, default)),
+    character(1)
+  )
+}
+
+nominal_lv_strength <- function(labels) {
+  parsed <- sub(".*(?:mean|median)_([0-9.]+).*", "\\1", labels, perl = TRUE)
+  parsed[parsed == labels] <- NA_character_
+  as.numeric(parsed)
+}
+
+read_experiment <- function(experiment) {
+  path <- file.path(experiment_root, experiment, "community_measures.RDS")
+  readRDS(path) |>
+    as_tibble() |>
+    mutate(
+      experiment = experiment,
+      framework = if_else(grepl("^LV", experiment), "Lotka-Volterra", "Consumer-resource")
+    )
+}
+
+standardise_experiment <- function(experiment) {
+  dat <- read_experiment(experiment)
+
+  if (grepl("^LV", experiment)) {
+    labels <- case_spec_character(dat, "interactions.selected.label")
+    dat |>
+      mutate(
+        treatment_label = labels,
+        treatment_value = nominal_lv_strength(labels),
+        treatment_plot = as.character(round(treatment_value, 2)),
+        treatment_axis = "Nominal interaction strength",
+        design_mean_optimum = case_spec_numeric(dat, "traits.birth_optimum.mean"),
+        design_optimum_range = case_spec_numeric(dat, "traits.birth_optimum.range"),
+        design_width_mean = case_spec_numeric(dat, "traits.birth_width.mean"),
+        design_width_range = case_spec_numeric(dat, "traits.birth_width.range"),
+        raw_cpc = as.numeric(cv_community_performance_info),
+        raw_cpc_null = as.numeric(cv_community_performance_naive),
+        viability_binary_cpc = as.numeric(cv_community_viability_binary_info),
+        viability_binary_cpc_null = as.numeric(cv_community_viability_binary_naive),
+        actual_cpc = as.numeric(cv_community_performance_info),
+        null_cpc = as.numeric(cv_community_performance_naive)
+      )
+  } else {
+    private_use <- case_spec_numeric(dat, "resources.private_use.mean")
+    dat |>
+      mutate(
+        private_use_mean = private_use,
+        treatment_value = 1 - private_use_mean,
+        treatment_value = case_when(
+          treatment_value <= 0.025 ~ 0,
+          treatment_value >= 0.975 ~ 1,
+          TRUE ~ treatment_value
+        ),
+        treatment_plot = as.character(round(treatment_value, 2)),
+        treatment_label = paste0("shared_resource_", treatment_plot),
+        treatment_axis = "Shared-resource use",
+        design_mean_optimum = case_spec_numeric(dat, "traits.uptake_optimum.mean"),
+        design_optimum_range = case_spec_numeric(dat, "traits.uptake_optimum.range"),
+        design_width_mean = case_spec_numeric(dat, "traits.uptake_width.mean"),
+        design_width_range = case_spec_numeric(dat, "traits.uptake_width.range"),
+        raw_cpc = as.numeric(cv_community_performance_info),
+        raw_cpc_null = as.numeric(cv_community_performance_naive),
+        viability_binary_cpc = as.numeric(cv_community_viability_binary_info),
+        viability_binary_cpc_null = as.numeric(cv_community_viability_binary_naive),
+        actual_cpc = as.numeric(cv_community_viability_binary_info),
+        null_cpc = as.numeric(cv_community_viability_binary_naive)
+      )
+  }
+}
+
+raw_data <- map_dfr(selected_experiments, standardise_experiment)
+
+analysis_data <- raw_data |>
+  mutate(
+    stability = as.numeric(cv_total_abundance),
+    distance_mean_optimum = abs(20 - as.numeric(realized_mean_performance_optimum)),
+    sd_optimum = as.numeric(realized_sd_performance_optimum),
+    framework_label = recode(
+      framework,
+      "Lotka-Volterra" = "Lotka-Volterra\nLV 1 + LV 2",
+      "Consumer-resource" = "Consumer-resource\nCR 1 + CR 2"
+    ),
+    framework_label = factor(
+      framework_label,
+      levels = c("Lotka-Volterra\nLV 1 + LV 2", "Consumer-resource\nCR 1 + CR 2")
+    ),
+    experiment_label = factor(
+      format_experiment_label(experiment),
+      levels = format_experiment_label(selected_experiments)
+    ),
+    treatment_plot = factor(
+      treatment_plot,
+      levels = c("0", "0.25", "0.5", "0.75", "1")
+    )
+  ) |>
+  filter(
+    is.finite(stability),
+    is.finite(actual_cpc),
+    is.finite(null_cpc),
+    is.finite(distance_mean_optimum),
+    is.finite(sd_optimum),
+    is.finite(richness),
+    is.finite(treatment_value),
+    !is.na(env_series_id)
+  )
+
+experiment_audit <- analysis_data |>
+  group_by(experiment, framework) |>
+  summarise(
+    cases = n(),
+    treatment_levels = n_distinct(treatment_plot),
+    temperature_series = n_distinct(env_series_id),
+    richness = paste(sort(unique(richness)), collapse = ", "),
+    optimum_means = paste(sort(unique(design_mean_optimum)), collapse = ", "),
+    optimum_ranges = paste(sort(unique(design_optimum_range)), collapse = ", "),
+    width_means = paste(sort(unique(design_width_mean)), collapse = ", "),
+    width_ranges = paste(sort(unique(design_width_range)), collapse = ", "),
+    gamma = paste(sort(unique(one_over_f_gamma)), collapse = ", "),
+    .groups = "drop"
+  )
+```
+
+# Overview
+
+This supplementary information presents a reproducible record of
+the simulations used in the manuscript entitled: Community performance curves 
+predict temporal stability despite interaction effects.
+It contains the conceptual construction of community performance ($CP$),
+the simulation experiments, the
+generalisation of $CP$ through model-specific link functions, and additional
+simulation analyses.
+
+The simulation section uses two Lotka--Volterra runs and two consumer-resource
+runs, reported as LV 1, LV 2, CR 1, and CR 2. These runs were designed to test
+whether temporal variability in community performance predicts temporal
+variability in total abundance across interaction structures and modelling
+frameworks.
+
+@fig-conceptual-cp shows the raw $CP$ concept. @fig-viability-cp gives the
+conceptual construction of viability $CP$. @fig-main-simulation-results gives the
+main simulation result and associated random-forest analysis. Later sections
+define the model-specific $CP$ construction and compare synchrony predicted from
+species thermal performance curves with synchrony realised in the simulations.
+
+# Simulation Studies
+
+The simulation analyses use four factorial experiments. LV 1
+and LV 2 are Lotka--Volterra simulations in which temperature-dependent
+performance affects intrinsic growth. CR 1 and CR 2 are consumer-resource
+simulations in which temperature-dependent uptake and resource sharing generate
+abundance dynamics through resource-mediated competition. In all simulations,
+the response variable is temporal variability of total abundance, measured as
+the coefficient of variation of total abundance.
+
+The main linear models were fitted within each simulation run,
+interaction-strength or resource-sharing treatment, and temperature series. 
+
+## Implementation
+
+Simulation experiments were implemented with the R package
+[`community.simulator`](https://opetchey.github.io/community.simulator/index.html),
+which provides tools for specifying factorial simulation designs, generating
+temperature time series, simulating temperature-dependent community dynamics,
+and calculating community-level summary measures. The workflow used the package
+functions for reading experiment specifications, creating experiment tables,
+generating environmental time series, running dynamical simulations, and
+extracting community measures. The package documentation provides the relevant
+implementation details in the articles on
+[YAML experiment templates](https://opetchey.github.io/community.simulator/articles/yaml_templates.html),
+[getting started with a small experiment](https://opetchey.github.io/community.simulator/articles/experiment_getting_started.html),
+and the model-specific walkthroughs for
+[continuous-time Lotka--Volterra](https://opetchey.github.io/community.simulator/articles/lv_continuous_single_community.html)
+and
+[consumer-resource](https://opetchey.github.io/community.simulator/articles/consumer_resource_single_community.html)
+simulations. Function-level documentation is provided for
+[`run_experiment()`](https://opetchey.github.io/community.simulator/reference/run_experiment.html),
+[`simulate_dynamics_from_spec()`](https://opetchey.github.io/community.simulator/reference/simulate_dynamics_from_spec.html),
+[`get_community_measures_from_spec()`](https://opetchey.github.io/community.simulator/reference/get_community_measures_from_spec.html),
+[`simulator_lv_continuous()`](https://opetchey.github.io/community.simulator/reference/simulator_lv_continuous.html),
+and
+[`simulator_consumer_resource_continuous()`](https://opetchey.github.io/community.simulator/reference/simulator_consumer_resource_continuous.html).
+
+```{r}
+#| label: tbl-simulation-audit
+#| tbl-cap: "Publication simulation data included in the supplementary report."
+#| tbl-cap-location: bottom
+
+kable(
+  experiment_audit
+)
+```
+
+## Conceptual Construction of $CP$
+
+```{r conceptual-figure-preparation, include=FALSE}
+make_reddened_temperature <- function(seed) {
+  n <- 35
+  gamma <- 0.8
+  target_mean <- 22.5
+  target_sd <- 3.5
+  temp_step <- 0.1
+
+  set.seed(seed)
+  f <- seq(1, n / 2)
+  scales <- 1 / (f^(gamma / 2))
+  phases <- runif(length(f), 0, 2 * pi)
+  coeffs <- scales * exp(1i * phases)
+  full_coeffs <- c(0, coeffs, rev(Conj(coeffs[-length(coeffs)])))
+  raw_noise <- Re(fft(full_coeffs, inverse = TRUE))[1:n]
+  temperature_reddened <- as.vector(scale(raw_noise)) * target_sd + target_mean
+  temperature_reddened <- round(temperature_reddened / temp_step) * temp_step
+
+  tibble(
+    time = seq_len(n),
+    temp = temperature_reddened
+  ) |>
+    drop_na()
+}
+
+df_red2 <- make_reddened_temperature(113)
+experimental_day_index <- c(1:5, 8:12, 15:19, 22:26, 29:33)
+T_norm2 <- df_red2$temp[experimental_day_index]
+
+scale_temperature_trace <- function(temperature_df, y_values) {
+  y_range <- range(y_values, na.rm = TRUE, finite = TRUE)
+  temp_range <- range(temperature_df$temperature, na.rm = TRUE, finite = TRUE)
+
+  if (!all(is.finite(y_range)) || diff(y_range) == 0 ||
+      !all(is.finite(temp_range)) || diff(temp_range) == 0) {
+    return(mutate(temperature_df, temperature_scaled = mean(y_range)))
+  }
+
+  temperature_df |>
+    mutate(
+      temperature_scaled = y_range[1] +
+        (temperature - temp_range[1]) / diff(temp_range) * diff(y_range)
+    )
+}
+```
+
+```{r}
+#| label: fig-conceptual-cp
+#| fig-cap: "Conceptual construction of raw community performance ($CP$) using four idealised communities with widely spaced, tightly clustered, cool-skewed, or bimodal species optima. The first column shows species-level performance curves and the summed $CP$ curve. The second column shows null $CP$ time series under uniformly sampled temperatures. The third column shows actual $CP$ time series under an experienced temperature sequence. Dashed grey lines in the time-series panels show the temperature sequence rescaled to the plotting height."
+#| fig-width: 15
+#| fig-height: 12
+#| fig-cap-location: bottom
+
+concept_species_colours <- setNames(
+  viridisLite::magma(5, begin = 0.20, end = 0.85),
+  paste0("sp", 1:5)
+)
+
+concept_temperature_grid <- seq(10, 30, length.out = 250)
+
+concept_null_temperatures <- tibble(
+  time = seq_len(25),
+  temperature = seq(10, 30, length.out = 25)
+)
+
+concept_actual_temperatures <- tibble(
+  time = seq_along(T_norm2),
+  temperature = T_norm2
+)
+
+concept_species_sets <- list(
+  "Widely spaced optima" = tibble(
+    species = paste0("sp", 1:5),
+    Topt = c(12, 15, 20, 25, 28),
+    width = c(3, 5, 4, 6, 3)
+  ),
+  "Tightly clustered optima" = tibble(
+    species = paste0("sp", 1:5),
+    Topt = c(19, 19.5, 20, 20.5, 21),
+    width = c(3.5, 3.8, 4, 3.6, 3.9)
+  ),
+  "Cool-skewed optima" = tibble(
+    species = paste0("sp", 1:5),
+    Topt = c(11, 12, 13, 14, 15),
+    width = c(3, 4, 5, 3, 4)
+  ),
+  "Bimodal optima" = tibble(
+    species = paste0("sp", 1:5),
+    Topt = c(11, 12, 13, 27, 29),
+    width = c(3, 4, 5, 3, 4)
+  )
+)
+
+concept_performance <- function(temperature, optimum, width) {
+  exp(-0.5 * ((temperature - optimum) / width)^2)
+}
+
+concept_species_performance <- function(species_df, temperature_df) {
+  crossing(
+    temperature_df,
+    species_df
+  ) |>
+    mutate(
+      performance = concept_performance(temperature, Topt, width)
+    )
+}
+
+concept_cp_timeseries <- function(species_df, temperature_df) {
+  concept_species_performance(species_df, temperature_df) |>
+    group_by(time) |>
+    mutate(community_performance = sum(performance)) |>
+    ungroup()
+}
+
+concept_viability_timeseries <- function(species_df, temperature_df, threshold = 0.35) {
+  concept_species_performance(species_df, temperature_df) |>
+    mutate(viable = as.numeric(performance >= threshold)) |>
+    group_by(time) |>
+    mutate(community_viability = mean(viable)) |>
+    ungroup()
+}
+
+concept_curve_column <- function(species_df, community_label, show_title = FALSE, show_x = FALSE) {
+  curve_temperatures <- tibble(
+    time = seq_along(concept_temperature_grid),
+    temperature = concept_temperature_grid
+  )
+
+  species_curves <- concept_species_performance(species_df, curve_temperatures)
+
+  cp_curve <- species_curves |>
+    group_by(temperature) |>
+    summarise(community_performance = sum(performance), .groups = "drop")
+
+  p <- ggplot() +
+    geom_line(
+      data = species_curves,
+      aes(x = temperature, y = performance, colour = species),
+      linewidth = 1.05,
+      alpha = 0.78
+    ) +
+    geom_line(
+      data = cp_curve,
+      aes(x = temperature, y = community_performance),
+      linewidth = 1.55,
+      colour = "black"
+    ) +
+    scale_colour_manual(values = concept_species_colours, drop = FALSE) +
+    theme_clean(12) +
+    labs(
+      title = if (show_title) expression(paste("Species curves and ", CP)) else NULL,
+      subtitle = community_label,
+      x = "Temperature (°C)",
+      y = "Performance",
+      colour = "Species"
+    )
+
+  if (!show_x) {
+    p <- p + theme(axis.title.x = element_blank())
+  }
+
+  p
+}
+
+concept_timeseries_column <- function(species_df, temperature_df, title, show_x = FALSE) {
+  plot_data <- concept_cp_timeseries(species_df, temperature_df)
+  cp_data <- plot_data |>
+    distinct(time, community_performance)
+
+  cp_cv <- sd(cp_data$community_performance) / mean(cp_data$community_performance)
+  temperature_trace <- scale_temperature_trace(
+    temperature_df,
+    c(plot_data$performance, cp_data$community_performance)
+  )
+
+  p <- ggplot() +
+    geom_line(
+      data = temperature_trace,
+      aes(x = time, y = temperature_scaled),
+      inherit.aes = FALSE,
+      colour = "grey35",
+      linewidth = 0.7,
+      linetype = "22",
+      alpha = 0.45
+    ) +
+    geom_line(
+      data = plot_data,
+      aes(x = time, y = performance, colour = species, group = species),
+      linewidth = 0.95,
+      alpha = 0.78
+    ) +
+    geom_point(
+      data = plot_data,
+      aes(x = time, y = performance, colour = species),
+      size = 1.4,
+      alpha = 0.78
+    ) +
+    geom_line(
+      data = cp_data,
+      aes(x = time, y = community_performance),
+      linewidth = 1.55,
+      colour = "black"
+    ) +
+    annotate(
+      "label",
+      x = Inf,
+      y = Inf,
+      hjust = 1.03,
+      vjust = 1.12,
+      label = paste0("CV(CP) == ", sprintf("%.2f", cp_cv)),
+      linewidth = 0.18,
+      size = 3.4,
+      parse = TRUE
+    ) +
+    scale_colour_manual(values = concept_species_colours, drop = FALSE) +
+    theme_clean(12) +
+    labs(
+      title = title,
+      x = "Time step",
+      y = "Performance",
+      colour = "Species"
+    )
+
+  if (!show_x) {
+    p <- p + theme(axis.title.x = element_blank())
+  }
+
+  p
+}
+
+concept_figure_rows <- imap(concept_species_sets, function(species_df, community_label) {
+  row_index <- match(community_label, names(concept_species_sets))
+  show_title <- row_index == 1
+  show_x <- row_index == length(concept_species_sets)
+
+  concept_curve_column(
+    species_df,
+    community_label,
+    show_title = show_title,
+    show_x = show_x
+  ) |
+    concept_timeseries_column(
+      species_df,
+      concept_null_temperatures,
+      title = if (show_title) expression(atop(paste("Null ", CP), "over uniform temperatures")) else NULL,
+      show_x = show_x
+    ) |
+    concept_timeseries_column(
+      species_df,
+      concept_actual_temperatures,
+      title = if (show_title) expression(atop(paste("Actual ", CP), "over experienced temperatures")) else NULL,
+      show_x = show_x
+    )
+})
+
+wrap_plots(concept_figure_rows, ncol = 1) +
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(legend.position = "none")
+```
+
+### Viability $CP$
+
+```{r}
+#| label: fig-viability-cp
+#| fig-cap: "Conceptual construction of viability $CP$. Species performance curves are first transformed into binary viability using the dashed threshold. Community viability $CP$ is the fraction of species above that threshold at each temperature or time step. Dashed grey traces in the time-series panels show the temperature sequence rescaled to the panel height, and black curves show community-level viability $CP$."
+#| fig-width: 15
+#| fig-height: 12
+#| fig-cap-location: bottom
+
+viability_threshold <- 0.35
+
+concept_viability_curve_column <- function(species_df, community_label, show_title = FALSE, show_x = FALSE) {
+  curve_temperatures <- tibble(
+    time = seq_along(concept_temperature_grid),
+    temperature = concept_temperature_grid
+  )
+
+  species_curves <- concept_species_performance(species_df, curve_temperatures)
+
+  viability_curve <- species_curves |>
+    mutate(viable = as.numeric(performance >= viability_threshold)) |>
+    group_by(temperature) |>
+    summarise(community_viability = mean(viable), .groups = "drop")
+
+  p <- ggplot() +
+    geom_line(
+      data = species_curves,
+      aes(x = temperature, y = performance, colour = species),
+      linewidth = 1.05,
+      alpha = 0.70
+    ) +
+    geom_hline(
+      yintercept = viability_threshold,
+      colour = "grey35",
+      linewidth = 0.55,
+      linetype = "22"
+    ) +
+    geom_step(
+      data = viability_curve,
+      aes(x = temperature, y = community_viability),
+      linewidth = 1.55,
+      colour = "black"
+    ) +
+    scale_colour_manual(values = concept_species_colours, drop = FALSE) +
+    coord_cartesian(ylim = c(0, 1.05)) +
+    theme_clean(12) +
+    labs(
+      title = if (show_title) expression(paste("Species curves and viability ", CP)) else NULL,
+      subtitle = community_label,
+      x = "Temperature (°C)",
+      y = "Performance / fraction viable",
+      colour = "Species"
+    )
+
+  if (!show_x) {
+    p <- p + theme(axis.title.x = element_blank())
+  }
+
+  p
+}
+
+concept_viability_timeseries_column <- function(species_df, temperature_df, title, show_x = FALSE) {
+  plot_data <- concept_viability_timeseries(
+    species_df,
+    temperature_df,
+    threshold = viability_threshold
+  )
+
+  viability_data <- plot_data |>
+    distinct(time, community_viability)
+
+  viability_cv <- sd(viability_data$community_viability) /
+    mean(viability_data$community_viability)
+
+  temperature_trace <- scale_temperature_trace(
+    temperature_df,
+    c(plot_data$viable, viability_data$community_viability)
+  )
+
+  p <- ggplot() +
+    geom_line(
+      data = temperature_trace,
+      aes(x = time, y = temperature_scaled),
+      inherit.aes = FALSE,
+      colour = "grey35",
+      linewidth = 0.7,
+      linetype = "22",
+      alpha = 0.45
+    ) +
+    geom_line(
+      data = plot_data,
+      aes(x = time, y = viable, colour = species, group = species),
+      linewidth = 0.85,
+      alpha = 0.65
+    ) +
+    geom_point(
+      data = plot_data,
+      aes(x = time, y = viable, colour = species),
+      size = 1.4,
+      alpha = 0.70
+    ) +
+    geom_step(
+      data = viability_data,
+      aes(x = time, y = community_viability),
+      linewidth = 1.55,
+      colour = "black"
+    ) +
+    annotate(
+      "label",
+      x = Inf,
+      y = Inf,
+      hjust = 1.03,
+      vjust = 1.12,
+      label = paste0("CV(CP) == ", sprintf("%.2f", viability_cv)),
+      linewidth = 0.18,
+      size = 3.4,
+      parse = TRUE
+    ) +
+    scale_colour_manual(values = concept_species_colours, drop = FALSE) +
+    coord_cartesian(ylim = c(-0.04, 1.05)) +
+    theme_clean(12) +
+    labs(
+      title = title,
+      x = "Time step",
+      y = "Viability / fraction viable",
+      colour = "Species"
+    )
+
+  if (!show_x) {
+    p <- p + theme(axis.title.x = element_blank())
+  }
+
+  p
+}
+
+viability_figure_rows <- imap(concept_species_sets, function(species_df, community_label) {
+  row_index <- match(community_label, names(concept_species_sets))
+  show_title <- row_index == 1
+  show_x <- row_index == length(concept_species_sets)
+
+  concept_viability_curve_column(
+    species_df,
+    community_label,
+    show_title = show_title,
+    show_x = show_x
+  ) |
+    concept_viability_timeseries_column(
+      species_df,
+      concept_null_temperatures,
+      title = if (show_title) expression(atop(paste("Null viability ", CP), "uniform temperatures")) else NULL,
+      show_x = show_x
+    ) |
+    concept_viability_timeseries_column(
+      species_df,
+      concept_actual_temperatures,
+      title = if (show_title) expression(atop(paste("Actual viability ", CP), "experienced temperatures")) else NULL,
+      show_x = show_x
+    )
+})
+
+wrap_plots(viability_figure_rows, ncol = 1) +
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(legend.position = "none")
+```
+
+
+```{r model-functions}
+safe_r2 <- function(formula, data) {
+  fit <- tryCatch(lm(formula, data = data), error = function(e) NULL)
+  if (is.null(fit)) {
+    return(NA_real_)
+  }
+  r2 <- summary(fit)$r.squared
+  ifelse(is.finite(r2), r2, NA_real_)
+}
+
+grouped_r2 <- analysis_data |>
+  group_by(experiment, framework, framework_label, treatment_plot, treatment_value, env_series_id) |>
+  group_modify(~ {
+    dat <- .x
+    if (nrow(dat) < 4) {
+      return(tibble(
+        predictor = c("Actual CP variability", "Null CP variability", "Trait summaries"),
+        r2 = NA_real_,
+        n_cases = nrow(dat),
+        note = "fewer than four observations in group"
+      ))
+    }
+
+    tibble(
+      predictor = c("Actual CP variability", "Null CP variability", "Trait summaries"),
+      r2 = c(
+        safe_r2(stability ~ actual_cpc, dat),
+        safe_r2(stability ~ null_cpc, dat),
+        safe_r2(stability ~ distance_mean_optimum * sd_optimum, dat)
+      ),
+      n_cases = nrow(dat),
+      note = NA_character_
+    )
+  }) |>
+  ungroup() |>
+  mutate(
+    predictor = factor(predictor, levels = c("Actual CP variability", "Null CP variability", "Trait summaries")),
+    treatment_plot = factor(treatment_plot, levels = c("0", "0.25", "0.5", "0.75", "1"))
+  )
+
+summary_by_framework <- grouped_r2 |>
+  group_by(framework, predictor) |>
+  summarise(
+    groups = sum(is.finite(r2)),
+    median_r2 = median(r2, na.rm = TRUE),
+    q25_r2 = quantile(r2, 0.25, na.rm = TRUE),
+    q75_r2 = quantile(r2, 0.75, na.rm = TRUE),
+    min_r2 = min(r2, na.rm = TRUE),
+    max_r2 = max(r2, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+summary_by_treatment <- grouped_r2 |>
+  group_by(framework, treatment_plot, predictor) |>
+  summarise(
+    median_r2 = median(r2, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+summary_by_experiment <- grouped_r2 |>
+  group_by(experiment, framework, predictor) |>
+  summarise(
+    median_r2 = median(r2, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+get_summary_value <- function(framework_name, predictor_name, column = "median_r2") {
+  summary_by_framework |>
+    filter(framework == framework_name, predictor == predictor_name) |>
+    pull({{ column }}) |>
+    first()
+}
+```
+
+## Simulation Results
+
+Variability of $CP$ predicted community variability across both modelling
+frameworks, but the relevant $CP$ scale differed between models. In the
+Lotka--Volterra simulations, where temperature-dependent performance enters
+directly through intrinsic growth, raw $CV(CP)$ explained a large fraction of
+variation in total-abundance instability.
+Actual $CP$ variability, $CV(CP_{\text{actual}})$, had a median grouped \(R^2\) of
+`r round(get_summary_value("Lotka-Volterra", "Actual CP variability"), 2)`, and null
+$CP$ variability, $CV(CP_{\text{null}})$, had a very similar median grouped \(R^2\) of
+`r round(get_summary_value("Lotka-Volterra", "Null CP variability"), 2)`. By contrast, the
+trait-summary model explained less variation, with a median grouped
+\(R^2\) of `r round(get_summary_value("Lotka-Volterra", "Trait summaries"), 2)`.
+
+In the consumer-resource simulations, raw uptake curves are filtered through
+resource depletion, mortality, and competition for shared resources. Binary
+viability therefore provides the $CP$ scale most directly related to total
+abundance. Actual viability $CP$ variability, $CV(CP_{\text{actual}})$, had a median
+grouped \(R^2\) of
+`r round(get_summary_value("Consumer-resource", "Actual CP variability"), 2)`. Null
+viability $CP$ variability, $CV(CP_{\text{null}})$, explained less variation
+(\(R^2 = `r round(get_summary_value("Consumer-resource", "Null CP variability"), 2)`\)),
+as did the trait-summary model
+(\(R^2 = `r round(get_summary_value("Consumer-resource", "Trait summaries"), 2)`\)).
+These results indicate that $CP$ variability is most informative when $CP$ is
+constructed on a scale that corresponds to the abundance process being analysed.
+
+The random-forest analysis gave a consistent ranking of predictors. Actual
+$CP$ variability, $CV(CP_{\text{actual}})$, had the highest permutation importance in all four simulation runs. Null
+$CP$ variability, $CV(CP_{\text{null}})$, had secondary permutation importance in the Lotka--Volterra runs and
+lower permutation importance in the consumer-resource runs. Trait summaries,
+richness, and interaction or resource-sharing treatment had lower permutation
+importance once $CV(CP_{\text{actual}})$ was included.
+
+```{r r2-summary-tables, include=FALSE}
+kable(
+  summary_by_framework |>
+    mutate(across(ends_with("_r2"), ~ round(.x, 3))),
+  caption = "Grouped linear-model explanatory power by modelling framework."
+)
+
+kable(
+  summary_by_experiment |>
+    mutate(median_r2 = round(median_r2, 3)),
+  caption = "Median grouped explanatory power by experiment."
+)
+```
+
+```{r random-forest, include=FALSE}
+rf_variable_labels <- c(
+  actual_cpc = "Actual CP variability",
+  null_cpc = "Null CP variability",
+  distance_mean_optimum = "|mean optimum - mean T|",
+  sd_optimum = "SD optimum",
+  richness = "Richness",
+  treatment_numeric = "Interaction/resource sharing"
+)
+
+make_rf_data <- function(experiment_name) {
+  analysis_data |>
+    filter(experiment == experiment_name) |>
+    mutate(treatment_numeric = as.numeric(treatment_value)) |>
+    select(
+      experiment,
+      experiment_label,
+      framework,
+      stability,
+      actual_cpc,
+      null_cpc,
+      distance_mean_optimum,
+      sd_optimum,
+      richness,
+      treatment_numeric
+    ) |>
+    filter(
+      if_all(
+        c(stability, actual_cpc, null_cpc, distance_mean_optimum,
+          sd_optimum, richness, treatment_numeric),
+        is.finite
+      )
+    )
+}
+
+fit_rf_outputs <- function(experiment_name) {
+  dat <- make_rf_data(experiment_name)
+  if (nrow(dat) < 20) {
+    empty_importance <- tibble(
+        experiment = experiment_name,
+        experiment_label = format_experiment_label(experiment_name),
+        variable = names(rf_variable_labels),
+        importance = NA_real_,
+        scaled_importance = NA_real_,
+        note = "too few cases for a stable random forest"
+      )
+    empty_predictions <- tibble(
+      experiment = experiment_name,
+      experiment_label = format_experiment_label(experiment_name),
+      framework = NA_character_,
+      observed = NA_real_,
+      predicted = NA_real_,
+      oob_r2 = NA_real_
+    )
+    return(list(importance = empty_importance, predictions = empty_predictions))
+  }
+
+  set.seed(123)
+  rf <- ranger(
+    stability ~ actual_cpc + null_cpc + distance_mean_optimum +
+      sd_optimum + richness + treatment_numeric,
+    data = dat,
+    importance = "permutation",
+    num.trees = 1000,
+    mtry = 3
+  )
+
+  importance <- enframe(rf$variable.importance, name = "variable", value = "importance") |>
+    mutate(
+      experiment = experiment_name,
+      experiment_label = format_experiment_label(experiment_name),
+      scaled_importance = importance / max(importance, na.rm = TRUE),
+      note = NA_character_
+    )
+
+  predictions <- dat |>
+    transmute(
+      experiment = experiment_name,
+      experiment_label = first(experiment_label),
+      framework = first(framework),
+      observed = stability,
+      predicted = rf$predictions,
+      oob_r2 = rf$r.squared
+    )
+
+  list(importance = importance, predictions = predictions)
+}
+
+rf_outputs <- map(selected_experiments, fit_rf_outputs)
+
+rf_importance <- map_dfr(rf_outputs, "importance") |>
+  mutate(
+    variable_label = recode(variable, !!!rf_variable_labels),
+    variable_label = factor(variable_label, levels = unname(rf_variable_labels)),
+    experiment_label = factor(experiment_label, levels = format_experiment_label(selected_experiments))
+  )
+
+rf_prediction_data <- map_dfr(rf_outputs, "predictions") |>
+  filter(is.finite(observed), is.finite(predicted)) |>
+  mutate(
+    experiment_label = factor(experiment_label, levels = format_experiment_label(selected_experiments)),
+    oob_label = paste0("OOB R² = ", round(oob_r2, 3))
+  )
+
+rf_oob_summary <- rf_prediction_data |>
+  distinct(experiment, experiment_label, framework, oob_r2)
+
+random_subset_r2 <- function(experiment_name) {
+  dat <- make_rf_data(experiment_name)
+  n_groups <- min(500L, max(1L, floor(nrow(dat) / 25L)))
+
+  set.seed(100 + match(experiment_name, selected_experiments))
+  dat |>
+    mutate(random_group = sample(rep(seq_len(n_groups), length.out = n()))) |>
+    group_by(random_group) |>
+    summarise(
+      n_pairs = sum(is.finite(stability) & is.finite(actual_cpc)),
+      r2 = if (n_pairs >= 4) {
+        cor(stability, actual_cpc, use = "complete.obs")^2
+      } else {
+        NA_real_
+      },
+      .groups = "drop"
+    ) |>
+    filter(is.finite(r2)) |>
+    mutate(
+      experiment = experiment_name,
+      experiment_label = format_experiment_label(experiment_name)
+    )
+}
+
+random_subset_data <- map_dfr(selected_experiments, random_subset_r2) |>
+  mutate(experiment_label = factor(experiment_label, levels = format_experiment_label(selected_experiments)))
+
+kable(
+  if (knitr::pandoc_to("docx")) {
+    rf_importance |>
+      select(experiment, variable = variable_label, scaled_importance) |>
+      mutate(scaled_importance = round(scaled_importance, 3))
+  } else {
+    rf_importance |>
+      select(experiment, variable = variable_label, importance, scaled_importance, note) |>
+      mutate(across(c(importance, scaled_importance), ~ round(.x, 3)))
+  },
+  caption = "Random-forest permutation importance. Values are scaled within each experiment for plotting."
+)
+```
+
+```{r}
+#| label: fig-main-simulation-results
+#| fig-cap: 'Explanatory power of community performance metrics across the four simulation experiments. Panel (a) shows linear-model R² values fitted within each run, treatment level, and temperature series; models were not grouped by mean thermal optimum. The x-axis gives nominal interaction strength for LV 1 and LV 2 and resource sharing for CR 1 and CR 2, where 0 indicates no shared resource and 1 indicates fully shared resource use. Facets show actual $CP$ variability ($CV(CP_{\text{actual}})$), null $CP$ variability ($CV(CP_{\text{null}})$), and trait summaries. For LV 1 and LV 2, actual and null $CP$ variability are based on raw community performance. For CR 1 and CR 2, actual and null $CP$ variability are based on binary viability $CP$. Trait summaries are the distance between realised mean optimum and mean environmental temperature, the realised standard deviation of optima, and their interaction. Panel (b) shows random-subset robustness for $CV(CP_{\text{actual}})$. Panel (c) shows random-forest permutation importance for the same predictor set, scaled within each run. Panel (d) compares observed instability with out-of-bag predicted instability.'
+#| fig-width: 15
+#| fig-height: 10.5
+#| fig-cap-location: bottom
+
+importance_offsets <- tibble(
+  experiment_label = factor(
+    format_experiment_label(selected_experiments),
+    levels = format_experiment_label(selected_experiments)
+  ),
+  importance_offset = c(-0.24, -0.08, 0.08, 0.24)
+)
+
+importance_data <- rf_importance |>
+  filter(is.finite(scaled_importance)) |>
+  left_join(importance_offsets, by = "experiment_label") |>
+  mutate(
+    variable_label = factor(variable_label, levels = rev(unname(rf_variable_labels))),
+    variable_y = as.numeric(variable_label) + importance_offset
+  )
+
+experiment_levels <- unique(c(
+  as.character(random_subset_data$experiment_label),
+  as.character(importance_data$experiment_label),
+  as.character(rf_prediction_data$experiment_label)
+))
+
+experiment_colours <- setNames(
+  magma(
+    n = length(experiment_levels),
+    begin = 0.20,
+    end = 0.85
+  ),
+  experiment_levels
+)
+
+framework_levels <- c("LV", "CR")
+
+framework_colours <- setNames(
+  magma(
+    n = length(framework_levels),
+    begin = 0.20,
+    end = 0.85
+  ),
+  framework_levels
+)
+
+random_subset_data <- random_subset_data |>
+  mutate(experiment_label = factor(experiment_label, levels = experiment_levels))
+
+importance_data <- importance_data |>
+  mutate(experiment_label = factor(experiment_label, levels = experiment_levels))
+
+rf_prediction_data <- rf_prediction_data |>
+  mutate(experiment_label = factor(experiment_label, levels = experiment_levels))
+
+common_theme <- theme_figure(12) +
+  theme(
+    plot.tag = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 13, colour = "black"),
+    axis.text = element_text(size = 11, colour = "black"),
+    strip.text = element_text(size = 12, face = "bold", colour = "black"),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11),
+    legend.key.size = grid::unit(0.7, "cm"),
+    panel.grid.major.y = element_line(colour = "grey90", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
+    plot.margin = margin(t = 7, r = 9, b = 7, l = 7)
+  )
+
+panel_a <- grouped_r2 |>
+  mutate(
+    framework_short = factor(
+      framework,
+      levels = c("Lotka-Volterra", "Consumer-resource"),
+      labels = framework_levels
+    )
+  ) |>
+  ggplot(aes(
+    x = treatment_plot,
+    y = r2,
+    colour = framework_short,
+    fill = framework_short
+  )) +
+  stat_halfeye(
+    position = position_dodge(width = 0.65),
+    adjust = 0.8,
+    width = 0.85,
+    slab_alpha = 0.40,
+    point_interval = median_qi,
+    .width = c(0.5, 0.8),
+    point_size = 3
+  ) +
+  geom_point(
+    position = position_jitterdodge(
+      dodge.width = 0.65,
+      jitter.width = 0.03
+    ),
+    alpha = 0.20,
+    size = 2.2,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ predictor, nrow = 1) +
+  scale_colour_manual(values = framework_colours, name = "Framework", drop = FALSE) +
+  scale_fill_manual(values = framework_colours, drop = FALSE, guide = "none") +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    x = "Interaction strength / resource sharing",
+    y = expression(paste("Grouped explanatory power (", R^2, ")"))
+  ) +
+  common_theme +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(size = 11, angle = 0, hjust = 0.5),
+    strip.text = element_text(size = 13, face = "bold")
+  )
+
+random_subset_panel <- random_subset_data |>
+  ggplot(aes(x = r2, fill = experiment_label)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 32,
+    colour = "white",
+    linewidth = 0.25,
+    alpha = 0.75
+  ) +
+  geom_density(linewidth = 0.9, colour = "grey20") +
+  facet_wrap(~ experiment_label, ncol = 2) +
+  scale_fill_manual(values = experiment_colours, drop = FALSE, guide = "none") +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25)) +
+  labs(
+    x = expression(paste("Random-subset ", R^2, " for ", CV(CP[actual]))),
+    y = "Density"
+  ) +
+  common_theme +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(size = 10.5),
+    axis.text.y = element_text(size = 10.5),
+    strip.text = element_text(size = 11.5, face = "bold")
+  )
+
+importance_plot <- importance_data |>
+  ggplot(aes(
+    y = variable_y,
+    x = scaled_importance,
+    colour = experiment_label,
+    shape = experiment_label
+  )) +
+  geom_segment(
+    aes(x = 0, xend = scaled_importance, yend = variable_y),
+    linewidth = 0.65
+  ) +
+  geom_point(size = 2.8, stroke = 0.6) +
+  scale_colour_manual(values = experiment_colours, drop = FALSE, name = "Run") +
+  scale_shape_manual(values = c(16, 17, 15, 18), drop = FALSE, name = "Run") +
+  scale_y_continuous(
+    breaks = seq_along(levels(importance_data$variable_label)),
+    labels = levels(importance_data$variable_label)
+  ) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25)) +
+  labs(
+    x = "Scaled permutation importance",
+    y = "Predictor variables"
+  ) +
+  common_theme +
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(size = 10.5),
+    axis.text.y = element_text(size = 11),
+    panel.grid.major.y = element_line(colour = "grey90", linewidth = 0.4)
+  )
+
+rf_accuracy_panel <- rf_prediction_data |>
+  ggplot(aes(
+    x = predicted,
+    y = observed,
+    colour = experiment_label
+  )) +
+  geom_point(alpha = 0.25, size = 1) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    colour = "grey50",
+    linewidth = 0.65
+  ) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.9) +
+  geom_text(
+    data = rf_prediction_data |> distinct(experiment_label, oob_label),
+    aes(x = -Inf, y = Inf, label = oob_label),
+    inherit.aes = FALSE,
+    hjust = -0.08,
+    vjust = 1.3,
+    size = 3.8,
+    colour = "black"
+  ) +
+  facet_wrap(~ experiment_label, ncol = 2, scales = "free") +
+  scale_colour_manual(values = experiment_colours, drop = FALSE, guide = "none") +
+  labs(
+    x = expression(paste("Out-of-bag predicted variability (", CV(CP[actual]), ")")),
+    y = expression(paste("Observed variability (", plain(CV), "(", N[plain(tot)], "))"))
+  ) +
+  common_theme +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(size = 10.5),
+    axis.text.y = element_text(size = 10.5),
+    strip.text = element_text(size = 11.5, face = "bold")
+  )
+
+panel_a /
+  (random_subset_panel | importance_plot | rf_accuracy_panel) +
+  plot_layout(
+    heights = c(1, 1.05),
+    widths = c(1, 1, 1),
+    guides = "keep"
+  ) +
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")",
+    theme = theme(plot.tag = element_text(size = 16, face = "bold"))
+  )
+```
+
+```{r}
+#| label: tbl-r2-summary-by-treatment
+#| tbl-cap: "Mean grouped explanatory power by modelling framework, grouping scheme, and predictor. Treatment-level rows come from linear models fitted within each run, interaction-strength or resource-sharing treatment, and temperature series. Pooled-treatment rows show the corresponding grouped R² values when treatment levels are not used for grouping; these models are fitted within each run and temperature series only."
+#| tbl-cap-location: bottom
+
+r2_by_temperature_series <- analysis_data |>
+  group_by(experiment, framework, framework_label, env_series_id) |>
+  group_modify(~ {
+    dat <- .x
+    if (nrow(dat) < 4) {
+      return(tibble(
+        predictor = c("Actual CP variability", "Null CP variability", "Trait summaries"),
+        r2 = NA_real_,
+        n_cases = nrow(dat),
+        note = "fewer than four observations in group"
+      ))
+    }
+
+    tibble(
+      predictor = c("Actual CP variability", "Null CP variability", "Trait summaries"),
+      r2 = c(
+        safe_r2(stability ~ actual_cpc, dat),
+        safe_r2(stability ~ null_cpc, dat),
+        safe_r2(stability ~ distance_mean_optimum * sd_optimum, dat)
+      ),
+      n_cases = nrow(dat),
+      note = NA_character_
+    )
+  }) |>
+  ungroup() |>
+  mutate(
+    predictor = factor(predictor, levels = c("Actual CP variability", "Null CP variability", "Trait summaries")),
+    treatment_plot = "Pooled",
+    grouping = "Run + temperature series"
+  )
+
+r2_summary_by_treatment_table <- bind_rows(
+  grouped_r2 |>
+    mutate(grouping = "Run + treatment + temperature series"),
+  r2_by_temperature_series
+) |>
+  mutate(
+    experiment_label = factor(
+      format_experiment_label(experiment),
+      levels = format_experiment_label(selected_experiments)
+    )
+  ) |>
+  group_by(framework, experiment_label, grouping, treatment_plot, predictor) |>
+  summarise(
+    groups = sum(is.finite(r2)),
+    mean_r2 = mean(r2, na.rm = TRUE),
+    median_r2 = median(r2, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    mean_r2 = round(mean_r2, 3),
+    median_r2 = round(median_r2, 3)
+  ) |>
+  arrange(framework, experiment_label, grouping, treatment_plot, predictor)
+
+kable(
+  r2_summary_by_treatment_table,
+  align = c("l", "l", "l", "c", "l", "r", "r", "r")
+)
+```
+
+## Simulation Interpretation
+
+The simulations support two linked conclusions. First, variability of $CP$
+predicts temporal community variability across both modelling frameworks, despite the fact
+that the frameworks differ substantially in how species responses enter
+abundance dynamics. Second, the appropriate $CP$ scale depends on the model. In
+the Lotka--Volterra simulations, raw $CV(CP)$ is appropriate because
+temperature-dependent performance enters directly into intrinsic growth. In the
+consumer-resource simulations, abundance depends on resource supply, depletion,
+mortality, and competition for shared resources. Binary viability $CP$ is
+therefore the more relevant community response for predicting total abundance
+variability.
+
+The consumer-resource simulations address a limitation of the Lotka--Volterra
+simulations. In the Lotka--Volterra model,
+interaction coefficients are not temperature dependent. In the consumer-resource
+model, uptake rates are temperature dependent and species compete through shared
+resources, implying temperature-dependent effective interaction strengths. The
+high predictive power of actual viability $CP$ variability, $CV(CP_{\text{actual}})$, in CR 1 and CR 2 therefore
+indicates that the main $CP$-stability result is robust to a mechanistic setting
+in which interaction strengths can vary with temperature.
+
+## Constructing $CP$ on an Appropriate Scale
+
+```{r cp-generalized-publication-data, include=FALSE}
+publication_link_data <- bind_rows(
+  analysis_data |>
+    transmute(
+      model_type = "Lotka--Volterra",
+      framework,
+      framework_label,
+      experiment_label,
+      link_function = "Identity link",
+      CP_CV = raw_cpc,
+      community_stability = 1 / stability,
+      community_instability = stability
+    ),
+  analysis_data |>
+    transmute(
+      model_type = "Lotka--Volterra",
+      framework,
+      framework_label,
+      experiment_label,
+      link_function = "Binary link",
+      CP_CV = viability_binary_cpc,
+      community_stability = 1 / stability,
+      community_instability = stability
+    ),
+  analysis_data |>
+    transmute(
+      model_type = "Consumer-resource",
+      framework,
+      framework_label,
+      experiment_label,
+      link_function = "Identity link",
+      CP_CV = raw_cpc,
+      community_stability = 1 / stability,
+      community_instability = stability
+    ),
+  analysis_data |>
+    transmute(
+      model_type = "Consumer-resource",
+      framework,
+      framework_label,
+      experiment_label,
+      link_function = "Binary link",
+      CP_CV = viability_binary_cpc,
+      community_stability = 1 / stability,
+      community_instability = stability
+    )
+) |>
+  filter(is.finite(CP_CV), is.finite(community_stability), is.finite(community_instability)) |>
+  mutate(
+    model_type = factor(model_type, levels = c("Lotka--Volterra", "Consumer-resource")),
+    link_function = factor(link_function, levels = c("Identity link", "Binary link"))
+  )
+
+publication_link_summaries <- publication_link_data |>
+  group_by(model_type, link_function) |>
+  summarise(
+    n = n(),
+    cp_cv_sd = sd(CP_CV),
+    stability_sd = sd(community_stability),
+    r_squared = ifelse(
+      n > 2 && cp_cv_sd > 0 && stability_sd > 0,
+      summary(lm(community_stability ~ CP_CV))$r.squared,
+      NA_real_
+    ),
+    .groups = "drop"
+  ) |>
+  mutate(
+    panel_label = ifelse(
+      is.na(r_squared),
+        paste0("n = ", n, "\nCV(CP) constant"),
+      paste0("n = ", n, "\nR² = ", formatC(r_squared, format = "f", digits = 2))
+    )
+  )
+
+plot_model_link_case <- function(data, model, link) {
+  plot_data_one <- data |>
+    filter(model_type == model, link_function == link)
+  plot_summary_one <- publication_link_summaries |>
+    filter(model_type == model, link_function == link)
+
+  plot <- ggplot(plot_data_one, aes(CP_CV, community_stability, colour = experiment_label)) +
+    geom_point(alpha = 0.32, size = 1.4) +
+    geom_text(
+      data = plot_summary_one,
+      aes(x = Inf, y = Inf, label = panel_label),
+      inherit.aes = FALSE,
+      hjust = 1.08,
+      vjust = 1.15,
+      size = 3.7
+    ) +
+    scale_colour_manual(
+      values = c("#3B5C7A", "#56B4E9", "#B56B45", "#009E73"),
+      name = "Run"
+    ) +
+    labs(
+      title = paste(model, "-", link),
+      x = expression(CV(CP)),
+      y = "Community stability, 1 / CV(total abundance)"
+    ) +
+    theme_figure(12)
+
+  if (isTRUE(plot_summary_one$cp_cv_sd > 0 && is.finite(plot_summary_one$r_squared))) {
+    plot <- plot + geom_smooth(method = "lm", se = TRUE, colour = "black", linewidth = 0.75)
+  }
+
+  plot
+}
+
+plot_model_link_case_filtered <- function(data, model, link, max_cp_cv) {
+  plot_data_one <- data |>
+    filter(model_type == model, link_function == link, CP_CV <= max_cp_cv)
+
+  plot_summary_one <- plot_data_one |>
+    summarise(
+      n = n(),
+      cp_cv_sd = sd(CP_CV),
+      stability_sd = sd(community_stability),
+      r_squared = ifelse(
+        n > 2 && cp_cv_sd > 0 && stability_sd > 0,
+        summary(lm(community_stability ~ CP_CV))$r.squared,
+        NA_real_
+      ),
+      .groups = "drop"
+    ) |>
+    mutate(
+      panel_label = ifelse(
+        is.na(r_squared),
+        paste0("n = ", n, "\nCV(CP) constant"),
+        paste0("n = ", n, "\nR² = ", formatC(r_squared, format = "f", digits = 2))
+      )
+    )
+
+  plot <- ggplot(plot_data_one, aes(CP_CV, community_stability, colour = experiment_label)) +
+    geom_point(alpha = 0.32, size = 1.4) +
+    geom_text(
+      data = plot_summary_one,
+      aes(x = Inf, y = Inf, label = panel_label),
+      inherit.aes = FALSE,
+      hjust = 1.08,
+      vjust = 1.15,
+      size = 3.7
+    ) +
+    scale_colour_manual(
+      values = c("#3B5C7A", "#56B4E9", "#B56B45", "#009E73"),
+      name = "Run"
+    ) +
+    labs(
+      title = paste0(model, " - ", link, " (CV(CP) <= ", max_cp_cv, ")"),
+      x = expression(CV(CP)),
+      y = "Community stability, 1 / CV(total abundance)"
+    ) +
+    theme_figure(12)
+
+  if (isTRUE(plot_summary_one$cp_cv_sd > 0 && is.finite(plot_summary_one$r_squared))) {
+    plot <- plot + geom_smooth(method = "lm", se = TRUE, colour = "black", linewidth = 0.75)
+  }
+
+  plot
+}
+
+cr_identity_filter_threshold <- 50
+```
+
+### General Definition
+
+A community performance curve ($CP$) can be defined by first mapping each
+species' temperature-dependent performance onto the scale of the community
+variable whose stability is being analysed, and then summing across species.
+
+For stability of total abundance or total biomass, the species-level curve
+therefore represents expected contribution to abundance or biomass, not
+just raw physiological performance or intrinsic growth rate.
+
+The general construction is:
+
+1. Compute each species' temperature-dependent performance curve.
+2. Transform each species' performance to the scale of the focal community
+   variable.
+3. Sum the transformed species curves to obtain the $CP$.
+4. Use the temporal variability of that $CP$ to predict the stability of the
+   focal community variable.
+
+In notation:
+
+$$
+P_i(T) = \text{raw performance of species } i \text{ at temperature } T
+$$
+
+$$
+A_i(T) = f_{\text{model}, y}(P_i(T))
+$$
+
+$$
+CP_y(T) = \sum_i A_i(T)
+$$
+
+where $y$ is the community variable whose stability is being predicted, such as
+total abundance or total biomass. The function $f_{\text{model}, y}$ is a
+model-specific link from raw species performance to expected contribution to
+that community variable.
+
+### Why The Link Function Matters
+
+When predicting the stability of total abundance or total biomass, the relevant
+question is not simply whether species have high or low raw performance. The
+relevant question is how changes in species performance translate into changes
+in species abundance or biomass.
+
+If raw performance is approximately linearly related to abundance, then summing
+raw performance curves can be appropriate. But if abundance responds
+nonlinearly, or if performance mainly determines whether a species can persist
+at all, then raw performance is not on the scale of the response variable. In
+that case, the species performance curve is first transformed onto an abundance
+or biomass scale
+before constructing the $CP$.
+
+This gives the following definition:
+
+> The $CP$ is a sum of species' expected contributions to the focal
+> community variable, not necessarily a sum of raw species performance curves.
+
+### Lotka-Volterra Model
+
+In the Lotka-Volterra model used here, raw temperature-dependent performance is
+closely linked to expected abundance by the model structure. Specifically, the
+model links intrinsic growth rate and carrying capacity in a way that makes
+higher performance correspond approximately linearly to higher expected
+abundance.
+
+For predicting stability of total abundance, the link function
+from performance to abundance-scale contribution can be treated as approximately
+identity:
+
+$$
+f_{\text{LV}, abundance}(P_i(T)) \approx P_i(T)
+$$
+
+So the LV abundance-scale $CP$ can be written as:
+
+$$
+CP_{\text{LV}}(T) = \sum_i P_i(T)
+$$
+
+Each species contributes its raw performance value to the community performance
+curve. In the Lotka--Volterra simulations, the scale of the summed curve is
+therefore close to the scale of the abundance response.
+
+### Consumer-Resource Model
+
+In the consumer-resource model, raw species performance is not linearly related
+to equilibrium abundance. Instead, intrinsic growth rate mainly determines
+whether a species can persist under the current thermal and resource context.
+
+If growth is negative, the species declines to very low abundance. If growth is
+positive, the species can grow, but its eventual abundance is then determined by
+other conditions, including:
+
+- resource supply;
+- mortality;
+- conversion efficiency;
+- half-saturation constants;
+- competition with other consumers for shared resources.
+
+For predicting stability of total abundance, the abundance-scale transformation
+is therefore represented by a viability threshold:
+
+$$
+f_{\text{CR}, abundance}(P_i(T)) =
+\begin{cases}
+1, & P_i(T) > 0 \\
+0, & P_i(T) \le 0
+\end{cases}
+$$
+
+The consumer-resource abundance-scale $CP$ is then:
+
+$$
+CP_{\text{CR viability}}(T) =
+\sum_i I(P_i(T) > 0)
+$$
+
+where $I(P_i(T) > 0)$ is 1 when species $i$ has positive growth at temperature
+$T$, and 0 otherwise.
+
+The $CP$ is the number of viable species through time. Its $CV$ measures temporal
+variation in the viable species pool under the temperature sequence.
+
+### Raw and Viability $CP$
+
+Raw $CV(CP)$ sums species growth-rate or performance curves. This construction is
+appropriate for the Lotka--Volterra model because raw performance is
+approximately on the abundance scale. In the consumer-resource model, raw growth
+rate is not the abundance response. It primarily controls whether a species can
+persist, while the abundance of persistent species is shaped by
+resource-mediated interactions.
+
+The viability-transformed $CP$ applies a model-specific link function before
+summing:
+
+$$
+\text{raw performance} \rightarrow \text{expected abundance-scale contribution}
+\rightarrow \text{community performance curve}
+$$
+
+### Proposed General Definition
+
+For any model and any focal community variable, define a $CP$ as:
+
+$$
+CP_y(T) = \sum_i f_{\text{model}, y}(P_i(T))
+$$
+
+where:
+
+- $P_i(T)$ is the raw species performance curve;
+- $y$ is the community variable whose stability is being predicted;
+- $f_{\text{model}, y}$ maps raw species performance to expected contribution
+  to $y$;
+- the $CP$ is formed only after this transformation.
+
+For the current models and response variable:
+
+```{r}
+#| label: tbl-cp-link-definition
+#| tbl-cap: "Model-specific $CP$ constructions for total-abundance stability."
+#| tbl-cap-location: bottom
+
+link_definition <- tibble(
+  Model = c("Lotka-Volterra", "Consumer-resource"),
+  `Focal stability variable` = c("Total abundance", "Total abundance"),
+  `Link from species performance to contribution` = c(
+    "Approximately identity",
+    "Binary viability, I(P_i(T) > 0)"
+  )
+)
+
+kable(
+  link_definition
+)
+```
+
+This definition keeps the $CP$ concept general while allowing the species-level
+performance-to-abundance link to differ among models.
+
+### Model-Link Cases
+
+The figure panels below apply this construction to the simulation outputs.
+Stability is shown as $1 / CV_{\text{total abundance}}$. The x-axis is $CV(CP)$
+constructed under each model-link combination. The main simulation analyses in
+@fig-main-simulation-results use the inverse response, total-abundance
+instability.
+
+For the Lotka-Volterra model, the identity-link $CP$ comes directly from the
+community-measures output. The binary-link $CP$ uses the 
+viability $CP$ calculated for the same runs. For the consumer-resource
+model, both identity-link and binary-link $CV(CP)$ values come from the 
+community-measures output.
+
+#### Lotka-Volterra, Identity Link
+
+```{r}
+#| label: fig-lv-identity-link
+#| fig-cap: "Lotka-Volterra identity-link $CP$. Points show simulation cases, the x-axis shows $CV(CP)$ based on raw community performance, and the y-axis shows community stability as $1 / CV(\\text{total abundance})$. The identity link is the model-consistent $CP$ construction for the Lotka-Volterra simulations."
+#| fig-width: 7
+#| fig-height: 5
+#| fig-cap-location: bottom
+
+plot_model_link_case(publication_link_data, "Lotka--Volterra", "Identity link")
+```
+
+#### Lotka-Volterra, Binary Link
+
+```{r}
+#| label: fig-lv-binary-link
+#| fig-cap: "Lotka-Volterra binary-link $CP$. Species performance is transformed into binary viability before constructing $CP$. This comparison evaluates the effect of reducing the Lotka-Volterra abundance response to a viability count rather than using the raw performance scale."
+#| fig-width: 7
+#| fig-height: 5
+#| fig-cap-location: bottom
+
+plot_model_link_case(publication_link_data, "Lotka--Volterra", "Binary link")
+```
+
+The binary-link $CP$ evaluates the effect of reducing the Lotka--Volterra response
+to a viability count rather than using the raw performance scale that enters the
+model dynamics directly.
+
+#### Consumer-Resource, Identity Link
+
+```{r}
+#| label: fig-cr-identity-link
+#| fig-cap: "Consumer-resource identity-link $CP$. Raw performance values are summed directly for the consumer-resource simulations, without first mapping performance onto an abundance-relevant viability scale."
+#| fig-width: 7
+#| fig-height: 5
+#| fig-cap-location: bottom
+
+plot_model_link_case(publication_link_data, "Consumer-resource", "Identity link")
+```
+
+The identity-link $CP$ in the consumer-resource model sums raw uptake or raw
+performance directly rather than first mapping performance onto an
+abundance-relevant viability scale.
+
+The same relationship with $CV(CP)$ values above `r cr_identity_filter_threshold`
+excluded is:
+
+```{r}
+#| label: fig-cr-identity-link-filtered
+#| fig-cap: "Consumer-resource identity-link $CP$ after excluding extreme raw $CV(CP)$ values. The filter removes cases with $CV(CP)$ above the stated threshold to show the relationship over the visually interpretable range of the raw identity-link metric."
+#| fig-width: 7
+#| fig-height: 5
+#| fig-cap-location: bottom
+
+plot_model_link_case_filtered(
+  publication_link_data,
+  "Consumer-resource",
+  "Identity link",
+  cr_identity_filter_threshold
+)
+```
+
+#### Consumer-Resource, Binary Link
+
+```{r}
+#| label: fig-cr-binary-link
+#| fig-cap: "Consumer-resource binary-link $CP$. Species performance is transformed into binary viability before constructing $CP$, matching the interpretation that total-abundance stability in the consumer-resource simulations is linked to the stability of the viable species pool."
+#| fig-width: 7
+#| fig-height: 5
+#| fig-cap-location: bottom
+
+plot_model_link_case(publication_link_data, "Consumer-resource", "Binary link")
+```
+
+The identity link was most closely aligned with the Lotka--Volterra model,
+whereas the binary viability link was most closely aligned with the
+consumer-resource model. The alternative link functions show how predictive
+performance changes when $CP$ is constructed on a scale less directly tied to the
+abundance variable whose stability is being predicted.
+
+### Practical Interpretation
+
+When the focal response is total abundance or biomass stability, $CP$ addresses
+the following question:
+
+> How much total abundance or biomass would the community be expected to support
+> at each temperature, given the species that can contribute under that model?
+
+In the LV model, species' raw performance values already approximate their
+expected abundance contributions. In the consumer-resource model, the
+first-order abundance contribution is closer to whether each species is viable
+at all.
+
+The predictive performance of viability $CP$ variability, $CV(CP)$, in the consumer-resource
+experiments supports the interpretation that $CP$ is most informative when
+constructed on the scale of the community variable whose stability is being
+predicted.
+
+### Summary of Raw and Viability $CP$
+
+@fig-raw-vs-binary summarises the same link-function comparison as explanatory
+power for actual-temperature $CP$ constructions, using the total-abundance
+instability response used in the main simulation analyses.
+
+```{r}
+#| label: fig-raw-vs-binary
+#| fig-cap: "Comparison of raw and binary $CP$ constructions for the Lotka-Volterra and consumer-resource simulations. Each point is the explanatory power of a single-predictor model relating total-abundance instability to one actual-temperature $CP$ variability metric, fitted separately for each run. Raw $CP$ sums expected performance or growth-rate values directly. Binary viability $CP$ counts species with positive expected net growth."
+#| fig-width: 13
+#| fig-height: 8
+#| fig-cap-location: bottom
+
+link_data <- analysis_data |>
+  transmute(
+    experiment,
+    experiment_label,
+    framework,
+    framework_label,
+    treatment_plot,
+    stability,
+    `Raw CP, actual` = raw_cpc,
+    `Binary viability CP, actual` = viability_binary_cpc
+  ) |>
+  pivot_longer(
+    cols = -c(experiment, experiment_label, framework, framework_label, treatment_plot, stability),
+    names_to = "cp_metric",
+    values_to = "cp_cv"
+  ) |>
+  filter(is.finite(stability), is.finite(cp_cv)) |>
+  mutate(
+    link = case_when(
+      grepl("Raw", cp_metric) ~ "Raw CP",
+      grepl("Binary", cp_metric) ~ "Binary viability CP"
+    ),
+    link = factor(link, levels = c("Raw CP", "Binary viability CP"))
+  )
+
+link_r2 <- link_data |>
+  group_by(experiment, experiment_label, framework, framework_label, link) |>
+  group_modify(~ tibble(
+    n = nrow(.x),
+    r2 = safe_r2(stability ~ cp_cv, .x)
+  )) |>
+  ungroup()
+
+link_summary <- link_r2 |>
+  group_by(link) |>
+  summarise(
+    median_r2 = median(r2, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+link_plot <- link_r2 |>
+  ggplot(aes(x = link, y = r2, linetype = experiment_label, shape = experiment_label, group = experiment_label)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.8) +
+  facet_wrap(~ framework_label, nrow = 1) +
+  scale_linetype_manual(values = c("solid", "22", "42", "13"), name = "Run") +
+  scale_shape_manual(values = c(16, 17, 15, 18), name = "Run") +
+  scale_x_discrete(
+    labels = c(
+      "Raw CP" = expression(paste("Raw ", CP)),
+      "Binary viability CP" = expression(paste("Binary viability ", CP))
+    )
+  ) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    x = NULL,
+    y = expression(paste("Single-predictor explanatory power (", R^2, ")"))
+  ) +
+  theme_figure(12) +
+  theme(
+    axis.text.x = element_text(angle = 20, hjust = 1),
+    strip.text.y = element_text(angle = 0)
+  )
+
+link_plot
+```
+
+The comparison supports the link-function interpretation. Actual binary and raw
+$CP$ metrics differ in their explanatory power across modelling frameworks. In the
+consumer-resource simulations, the binary viability scale corresponds more
+closely to the abundance dynamics generated by resource-mediated competition.
+
+## Additional Simulation Analyses
+
+The supplementary analysis tests whether species thermal performance curves
+predict the synchrony realised in the dynamical simulations, and whether this
+relationship depends on interaction strength or resource sharing.
+
+### Predicted Versus Realised Synchrony
+
+Synchrony was calculated with the Loreau--de Mazancourt metric. For a set of
+species-level time series $X_i(t)$, synchrony was
+
+$$
+\phi = \frac{\sigma^2\left(\sum_i X_i(t)\right)}
+{\left(\sum_i \sigma(X_i(t))\right)^2}.
+$$
+
+For realised synchrony, $X_i(t)$ was the simulated abundance of species $i$.
+For TPC-predicted synchrony, $X_i(t)$ was the species performance expected
+under either the realised temperature sequence or the null temperature
+distribution. Values near 0 indicate asynchronous species-level fluctuations,
+whereas values near 1 indicate synchronous fluctuations.
+
+```{r}
+#| label: fig-predicted-realised-synchrony
+#| fig-cap: "Comparison between synchrony predicted from species thermal performance curves and synchrony realised in the abundance simulations. Predicted synchrony was calculated from species TPCs under either the realised temperature series or the null temperature distribution. Realised synchrony was calculated from simulated species abundances. The top panels show the overall relationship; the dashed line is the 1:1 line and the black line is a linear fit. The bottom panels show the same relationship as R² values calculated separately for each interaction-strength or shared-resource-use level."
+#| fig-width: 12
+#| fig-height: 11
+#| fig-cap-location: bottom
+
+synchrony_data <- analysis_data |>
+  transmute(
+    experiment,
+    experiment_label,
+    framework,
+    framework_label,
+    treatment_plot,
+    realised_synchrony = as.numeric(synchrony_abundance),
+    `Actual TPC synchrony` = as.numeric(synchrony_performance_info),
+    `Null TPC synchrony` = as.numeric(synchrony_performance_naive)
+  ) |>
+  pivot_longer(
+    cols = c(`Actual TPC synchrony`, `Null TPC synchrony`),
+    names_to = "synchrony_predictor",
+    values_to = "predicted_synchrony"
+  ) |>
+  filter(is.finite(realised_synchrony), is.finite(predicted_synchrony)) |>
+  mutate(
+    synchrony_predictor = factor(
+      synchrony_predictor,
+      levels = c("Actual TPC synchrony", "Null TPC synchrony")
+    )
+  )
+
+synchrony_summary <- synchrony_data |>
+  group_by(framework, framework_label, synchrony_predictor) |>
+  summarise(
+    n = n(),
+    r2 = summary(lm(realised_synchrony ~ predicted_synchrony))$r.squared,
+    correlation = cor(realised_synchrony, predicted_synchrony),
+    .groups = "drop"
+  )
+
+safe_sync_r2 <- function(data) {
+  if (
+    nrow(data) < 4 ||
+      sd(data$realised_synchrony, na.rm = TRUE) == 0 ||
+      sd(data$predicted_synchrony, na.rm = TRUE) == 0
+  ) {
+    return(NA_real_)
+  }
+  summary(lm(realised_synchrony ~ predicted_synchrony, data = data))$r.squared
+}
+
+synchrony_treatment_summary <- synchrony_data |>
+  group_by(framework, framework_label, treatment_plot, synchrony_predictor) |>
+  group_modify(~ tibble(
+    n = nrow(.x),
+    r2 = safe_sync_r2(.x),
+    correlation = cor(.x$realised_synchrony, .x$predicted_synchrony)
+  )) |>
+  ungroup()
+
+synchrony_treatment_table <- synchrony_treatment_summary |>
+  mutate(r2 = round(r2, 3)) |>
+  select(framework, treatment = treatment_plot, synchrony_predictor, r2) |>
+  pivot_wider(names_from = synchrony_predictor, values_from = r2) |>
+  arrange(framework, treatment)
+
+get_sync_value <- function(framework_name, predictor_name, column = "r2") {
+  synchrony_summary |>
+    filter(framework == framework_name, synchrony_predictor == predictor_name) |>
+    pull({{ column }}) |>
+    first()
+}
+
+synchrony_plot <- synchrony_data |>
+  ggplot(aes(x = predicted_synchrony, y = realised_synchrony, colour = treatment_plot)) +
+  geom_point(alpha = 0.16, size = 0.75) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", colour = "grey45") +
+  geom_smooth(method = "lm", se = FALSE, colour = "black", linewidth = 0.75) +
+  geom_text(
+    data = synchrony_summary |>
+      mutate(label = paste0("R² = ", round(r2, 2), "\nr = ", round(correlation, 2))),
+    aes(x = 0.03, y = 0.97, label = label),
+    inherit.aes = FALSE,
+    hjust = 0,
+    vjust = 1,
+    size = 3.5
+  ) +
+  facet_grid(framework_label ~ synchrony_predictor) +
+  scale_colour_viridis_d(option = "C", end = 0.9, name = "Treatment") +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+  labs(
+    x = expression(atop("Performance synchrony", phi[perf])),
+    y = expression(atop("Biomass synchrony", phi[biom]))
+  ) +
+  theme_figure(12) +
+  theme(strip.text.y = element_text(angle = 0))
+
+synchrony_r2_plot <- synchrony_treatment_summary |>
+  ggplot(aes(x = treatment_plot, y = r2, colour = synchrony_predictor, group = synchrony_predictor)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.5) +
+  facet_wrap(~ framework_label, nrow = 1) +
+  scale_colour_manual(values = c("#3B5C7A", "#B56B45"), name = NULL) +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(
+    x = "Interaction strength / shared-resource use",
+    y = expression(paste("Synchrony relationship ", R^2))
+  ) +
+  theme_figure(12)
+
+synchrony_plot / synchrony_r2_plot +
+  plot_layout(heights = c(1.45, 1)) +
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")",
+    theme = theme(plot.tag = element_text(size = 16, face = "bold"))
+  )
+```
+
+```{r}
+#| label: tbl-synchrony-r2-by-treatment
+#| tbl-cap: "Synchrony relationship R² by interaction strength or shared-resource use."
+#| tbl-cap-location: bottom
+
+kable(
+  synchrony_treatment_table
+)
+```
+
+The synchrony comparison differed between the two modelling frameworks. In the
+Lotka--Volterra simulations, TPC-predicted synchrony had a weak relationship
+with realised abundance synchrony
+(\(R^2 = `r round(get_sync_value("Lotka-Volterra", "Actual TPC synchrony"), 2)`\)
+for actual TPC synchrony and
+\(R^2 = `r round(get_sync_value("Lotka-Volterra", "Null TPC synchrony"), 2)`\)
+for null TPC synchrony). In the consumer-resource simulations, the relationship
+had higher explanatory power
+(\(R^2 = `r round(get_sync_value("Consumer-resource", "Actual TPC synchrony"), 2)`\)
+for actual TPC synchrony and
+\(R^2 = `r round(get_sync_value("Consumer-resource", "Null TPC synchrony"), 2)`\)
+for null TPC synchrony). The consumer-resource model therefore carried more of
+the performance-curve synchrony signal into realised abundance
+synchrony. The treatment-specific \(R^2\) values show that this is not just an
+artefact of pooling across the resource-sharing gradient. Lotka--Volterra
+abundance synchrony was most predictable from TPC synchrony when interactions
+were absent, and this relationship declined as interaction strength increased.
+In the consumer-resource simulations, synchrony prediction had the highest
+explanatory power when resource use was mostly private and declined as
+shared-resource use increased. In both frameworks, interactions mediated how
+much species-level thermal synchrony was retained in realised abundance
+synchrony.

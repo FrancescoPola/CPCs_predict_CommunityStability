@@ -1,0 +1,2253 @@
+---
+title: "Reproducible report"
+editor: source
+execute: 
+  echo: true
+  message: false
+  warning: false
+  cache: false
+format:
+  html:
+    page-layout: full
+    code-fold: false
+    code-summary: "Show the code"
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    toc-expand: true
+    embed-resources: true
+number-sections: true
+---
+
+```{r}
+#| echo: false
+#| 
+rm(list = ls())
+library(community.simulator)
+library(tidyverse)
+library(here)
+library(kableExtra)
+library(DBI)
+library(RSQLite)
+library(patchwork)
+library(jsonlite)
+library(knitr)
+library(forcats)
+library(ggalluvial)
+library(viridis)
+library(ggdist)
+library(readxl)
+
+```
+
+# Introduction
+The purpose of this document is to provide a fully reproducible record of all analyses and figures presented in the accompanying manuscript. The paper examines how community performance curves (CPCs)—aggregated from species’ thermal performance curves—predict the temporal stability of ecological communities across simulated systems and a controlled microcosm experiment. The overarching goal is to evaluate how far response-based information can explain community stability, and where additional ecological structure such as richness, interaction strength, and resource mediation modifies this relationship.
+
+We focus on quantifying how the structure of species’ performance curves—specifically their thermal optima, breadth, and shapes—translates into aggregate community performance across fluctuating environments. As community performance curves capture a metatrait that integrates multiple underlying physiological and ecological traits, they provide a mechanistic link between environmental variation and community‑level fluctuations. We examine how variability in CPCs relates to temporal variability in total community biomass or abundance, our measure of stability.
+
+A central motivation of the paper is to test whether CPC-based summaries provide a useful bridge between individual thermal responses and community-level stability when interactions are present. Rather than treating responses and interactions as competing explanations, we ask how much CPC variability explains by itself and how that explanatory power changes with richness, interaction strength, and model structure. Using both simulations and empirical data, we compare CPC‑based metrics with more traditional trait‑based summaries, such as the mean and variance of species’ thermal optima.
+In this reproducible document, we also detail the systematic review, simulation framework, and empirical analyses that support the main claims of the manuscript. This includes models comparing observed, null, and viability CPC variability, the explanatory power of trait‑based predictors, and the contexts in which ecological interactions modify CPC-stability relationships.
+
+This entire document is generated via an Quarto document that reproduce all statistical analyses, and figures reported in the main article plus additional figures and analyses that we found useful for interpretation.
+
+IMPORTANT: to run the simulations and analyse the result, you need to install the new package "community.simulator" (available here: https://github.com/opetchey/community.simulator). The package is work in progress. 
+
+# Figure 1 
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig.width: 13
+#| fig.height: 10
+# -------------------------
+# Colourblind-safe palette
+# -------------------------
+okabe <- c(
+  "#E69F00", "#56B4E9", "#009E73",
+  "#F0E442", "#0072B2", "#D55E00", "#CC79A7"
+)
+
+# -------------------------
+# Performance curve
+# -------------------------
+performance_curve <- function(T, Topt, width, height = 1) {
+  height * exp(-0.5 * ((T - Topt) / width)^2)
+}
+
+# -------------------------
+# Build species curves
+# -------------------------
+make_curves <- function(species_df, T) {
+  bind_rows(lapply(1:nrow(species_df), function(i) {
+    tibble(
+      T = T,
+      perf = performance_curve(T, species_df$Topt[i], species_df$width[i]),
+      species = paste0("sp", i)
+    )
+  }))
+}
+
+# Temperature grid
+T <- seq(10, 30, length.out = 100)
+
+# Species sets
+species_sets <- list(
+  data.frame(Topt = c(12, 15, 20, 25, 28), width = c(3, 5, 4, 6, 3)),
+  data.frame(Topt = c(19, 19.5, 20, 20.5, 21), width = c(3.5, 3.8, 4, 3.6, 3.9)),
+  data.frame(Topt = c(11, 12, 13, 14, 15), width = c(3, 4, 5, 3, 4)),
+  data.frame(Topt = c(11, 12, 13, 27, 29), width = c(3, 4, 5, 3, 4))
+)
+
+community_names <- c(
+  "Widely spaced optima",
+  "Tightly clustered optima",
+  "Cool-skewed optima",
+  "Bimodal optima"
+)
+
+# The threshold is only used to illustrate the viability-CPC idea.
+viability_threshold <- 0.35
+
+### create 2 vectors of temperatures
+set.seed(123)
+num_temperatures <- 1000
+temperature_uniform <- seq(10, 30, length.out = num_temperatures)
+temperature_normal <- rnorm(n = num_temperatures, mean = 20, sd = 4)
+
+get_community_performance <- function(temperatures, community) {
+  species_performance_curves <- make_curves(community, temperatures)
+  community_performance_curve <- species_performance_curves %>%
+    group_by(T) %>%
+    summarise(
+      raw_cpc = sum(perf) / n_distinct(species),
+      viable_species = sum(perf >= viability_threshold),
+      viability_cpc = viable_species / n_distinct(species),
+      .groups = "drop"
+    )
+  return(community_performance_curve)
+}
+
+curve_panel <- function(community, community_label, show_title = FALSE, show_x = FALSE) {
+  df_curves <- make_curves(community, T)
+  df_cpc <- get_community_performance(T, community)
+
+  plot_title <- if (show_title) {
+    "Species responses and raw CP"
+  } else {
+    NULL
+  }
+
+  p <- ggplot() +
+    geom_line(
+      data = df_curves,
+      aes(x = T, y = perf, colour = species),
+      alpha = 0.60,
+      linewidth = 1,
+      show.legend = FALSE
+    ) +
+    geom_line(
+      data = df_cpc,
+      aes(x = T, y = raw_cpc),
+      colour = "black",
+      linewidth = 1.6
+    ) +
+    scale_colour_manual(values = okabe) +
+    coord_cartesian(ylim = c(0, 1.08)) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "none",
+      plot.title = element_text(hjust = 0.5, size = 12),
+      plot.subtitle = element_text(hjust = 0.5, size = 11)
+    ) +
+    labs(
+      title = plot_title,
+      subtitle = community_label,
+      x = "Temperature (°C)",
+      y = "Scaled response"
+    )
+
+  if (!show_x) {
+    p <- p + theme(axis.title.x = element_blank())
+  }
+
+  p
+}
+
+raw_cpc_distribution_panel <- function(data, title = NULL, show_x = FALSE) {
+  cv_value <- sd(data$raw_cpc) / mean(data$raw_cpc)
+
+  p <- ggplot(data, aes(x = raw_cpc)) +
+    geom_histogram(
+      bins = 40,
+      fill = "#3B5C7A",
+      colour = "white",
+      alpha = 0.85
+    ) +
+    annotate(
+      "text",
+      x = Inf,
+      y = Inf,
+      hjust = 1.08,
+      vjust = 1.4,
+      label = paste("CV =", round(cv_value, 2)),
+      size = 4.2,
+      fontface = "bold"
+    ) +
+    coord_cartesian(xlim = c(0, 1)) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(hjust = 0.5, size = 12)
+    ) +
+    labs(
+      title = title,
+      x = "Raw CP value",
+      y = "Count"
+    )
+
+  if (!show_x) {
+    p <- p + theme(axis.title.x = element_blank())
+  }
+
+  p
+}
+
+viability_cpc_distribution_panel <- function(data, title = NULL, show_x = FALSE) {
+  cv_value <- sd(data$viable_species) / mean(data$viable_species)
+  max_viable <- max(data$viable_species)
+
+  p <- ggplot(data, aes(x = viable_species)) +
+    geom_bar(
+      fill = "#009E73",
+      colour = "white",
+      alpha = 0.85
+    ) +
+    annotate(
+      "text",
+      x = Inf,
+      y = Inf,
+      hjust = 1.08,
+      vjust = 1.4,
+      label = paste("CV =", round(cv_value, 2)),
+      size = 4.2,
+      fontface = "bold"
+    ) +
+    scale_x_continuous(
+      breaks = 0:max_viable,
+      limits = c(-0.5, max_viable + 0.5)
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      plot.title = element_text(hjust = 0.5, size = 12)
+    ) +
+    labs(
+      title = title,
+      x = "Viable species",
+      y = "Count"
+    )
+
+  if (!show_x) {
+    p <- p + theme(axis.title.x = element_blank())
+  }
+
+  p
+}
+
+figure_rows <- lapply(seq_along(species_sets), function(i) {
+  community <- species_sets[[i]]
+  null_values <- get_community_performance(temperature_uniform, community)
+  actual_values <- get_community_performance(temperature_normal, community)
+  show_title <- i == 1
+  show_x <- i == length(species_sets)
+
+  curve <- curve_panel(
+    community = community,
+    community_label = community_names[[i]],
+    show_title = show_title,
+    show_x = show_x
+  )
+
+  null_raw <- raw_cpc_distribution_panel(
+    null_values,
+    title = if (show_title) "Raw CP values\nnull temperatures" else NULL,
+    show_x = show_x
+  )
+
+  actual_raw <- raw_cpc_distribution_panel(
+    actual_values,
+    title = if (show_title) "Raw CP values\nactual temperatures" else NULL,
+    show_x = show_x
+  )
+
+  curve | null_raw | actual_raw
+})
+
+final_plot <- wrap_plots(figure_rows, ncol = 1) +
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(
+    legend.position = "bottom",
+    plot.tag = element_text(face = "bold"),
+    plot.title = element_text(size = 12, hjust = 0.5)
+  )
+
+final_plot
+
+```
+
+Figure 1. Conceptual construction of raw community performance curves (CPCs) across four community types.
+Panels in the first column show species-specific thermal performance curves (thin coloured lines) and the raw CPC obtained by averaging species performance values (thick black line). The four rows show communities with widely spaced optima, tightly clustered optima, cool-skewed optima, and bimodal optima. The second and third columns show how raw CPC values sampled under a null uniform temperature distribution or an actual normally distributed temperature series translate into CPC variability. The reported CV values are calculated from the sampled CPC values shown in each distribution, not from the full curves themselves.
+
+
+# Literature review
+
+## Figure 2
+
+```{r}
+#| echo: false
+literature_file <- read_excel(here("literature_review", "data", "literature_file.xls"), 
+                             sheet = "Sheet1")
+
+# Prepare data --------------------------------------------------------------
+
+df_inc <- literature_file %>%
+  filter(`included after first screening` == "yes") %>%
+  select(
+    included_after_first_screening = `included after first screening`,
+    included_after_reading = `included after reading`,
+    type_of_study = `type of study`,
+    species_specific_responses = `species specific responses useful?`,
+    interactions_useful = `interactions useful?`,
+    ecosystem,
+    organism_group = `organism group`,
+    prevailing_mechanism = `prevailing mechanism`
+  ) %>%
+  mutate(
+    across(everything(), ~ fct_explicit_na(as.factor(.), "Unknown"))
+  )
+
+df_inc<-df_inc%>%filter(included_after_reading=="yes")
+
+
+# Alluvial plot -------------------------------------------------------------
+
+shared_theme <- theme_minimal(base_size = 20, base_family = "sans") +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 18),
+    axis.text  = element_text(size = 16),
+    legend.title = element_text(size = 16),
+    legend.text  = element_text(size = 16),
+    legend.position = "bottom"
+  )
+
+ngroups <- length(unique(df_inc$organism_group))
+
+magma_cols <- viridis(
+  n = ngroups,
+  option = "magma",
+  begin = 0.4,
+  end   = 0.8
+)
+
+alluvial <- ggplot(
+  df_inc,
+  aes(
+    axis3 = type_of_study,
+    axis4 = species_specific_responses,
+    axis5 = interactions_useful,
+    y = 1
+  )
+) +
+  geom_alluvium(aes(fill = organism_group), alpha = 0.85) +
+  geom_stratum(color = "grey70") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3.5) +
+  scale_x_discrete(
+    limits = c("Study type", "Species-specific?", "Interactions?"),
+    labels = c("Type of study", "Species-specific\nresponses useful?", "Interactions\nuseful?")
+  ) +
+  scale_fill_manual(values = magma_cols) +
+  labs(
+    x = "",
+    y = "Number of studies",
+    fill = "Organism group"
+  ) +
+  scale_y_continuous(
+    limits = c(0, 12),
+    breaks = seq(0, 12, 2)
+  ) +
+  shared_theme
+
+
+
+df_yes_yes <- df_inc %>%
+  filter(
+    species_specific_responses == "yes",
+    interactions_useful == "yes"
+  )
+
+# 2. Bar plot:  prevailing mechanism by study type -----------------
+ngroups <- length(unique(df_yes_yes$type_of_study))
+magma_cols <- viridis(
+  n = ngroups,
+  option = "mako",
+  begin = 0.4,
+  end   = 0.8
+)
+
+p_prev_mech_by_study <- ggplot(
+  df_yes_yes,
+  aes(
+    x = prevailing_mechanism,
+    fill = type_of_study
+  )
+) +
+  geom_bar(position = "stack", alpha = 0.85) +
+  coord_flip() +
+  scale_fill_manual(values = magma_cols) +
+  labs(
+    title = "Prevailing mechanisms",
+    x = "Prevailing mechanism",
+    y = "Number of studies",
+    fill = "Study type"
+  ) +
+  shared_theme
+
+```
+
+
+
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig.width: 14
+#| fig.height: 8
+# 5. Print plots --------------------------------------------------
+
+alluvial + p_prev_mech_by_study +
+  plot_layout(heights = c(3, 1))  # alluvial 3x taller than bar plot
+```
+Figure 2. Overview of study characteristics and prevailing mechanisms in the literature.
+The upper Sankey diagram illustrates the associations between study type (experimental, observational, theoretical, meta-analysis), whether species-specific responses were considered important for stability (yes, partially, no), and whether interactions were considered important for stability (yes, partially, no). Colours indicate organism groups. The lower bar plot summarizes which mechanism was considered prevailing (meaning the mechanism judged to have the stronger influence on stability) among studies that concluded both species-specific responses and interactions were important in the Sankey diagram, grouped by study type.
+
+
+
+# Simulation study
+
+```{r}
+#| echo: false
+
+## Importing results from the simuations 
+
+experiment_folder_location <- here("simulation_study", "final")
+experiment_name <- "data"
+experiment_design_filename <-  "final_v0.7.json"
+
+## create folder for experiment, if it does not already exist
+experiment_folder <- create_experiment_folder(experiment_folder_location, experiment_name)
+expt <- readRDS(paste0(experiment_folder, "experiment_table.RDS"))
+community_measures <- readRDS(paste0(experiment_folder, "community_measures.RDS"))
+
+
+```
+
+
+
+```{r}
+#| echo: false
+
+
+# Now we run linear models to compare the explanatory power of different predictors 
+# define your models in a list
+models <- list(
+  naive   = as.formula("(CV_totab) ~ (CV_community_perf_naive)"),
+  info    = as.formula("(CV_totab) ~ (CV_community_perf_info)"),
+  trait_summaries = as.formula("(CV_totab) ~ abs(20 - real_mean_b_opt) * real_sd_b_opt"))
+
+
+
+# run models for each unique sd_perf_mean
+results <- community_measures %>%
+  dplyr::filter(real_mean_b_opt <24 & real_mean_b_opt> 16) %>%
+  group_by(alpha_ij_mean, env_series_id) %>%
+  group_modify(~ {
+    map_df(models, function(f, dat) {
+      fit <- lm(f, data = dat)
+      tibble(r2 = summary(fit)$r.squared,
+             df_red=fit$df.residual)
+    }, dat = .x, .id = "model")
+  }) %>%
+  ungroup()
+
+results <- results %>%
+  mutate(
+    model = factor(
+      model,
+      levels = c("info", "naive", "trait_summaries"),
+      labels = c(
+        "Actual",
+        "Null",
+        "Trait summaries"
+      )
+    )
+  )
+
+```
+
+
+# Figure 3 
+```{r}
+#| echo: false
+#| warning: false
+#| fig.width: 12
+#| fig.height: 8
+# preparing figure 2 of the main text
+# Facet labels
+facet_labs <- c(
+  "Actual" = "CP (actual)",
+  "Null"    = "CP (null)"
+)
+
+
+results <- results %>%
+  mutate(alpha_ij_mean = as.factor(alpha_ij_mean))
+
+
+p <- ggplot(results, aes(x = alpha_ij_mean, y = r2)) +
+
+  # 1. PLOT POINTS FIRST (Background)
+  geom_point(
+    position = position_jitter(width = 0.05, height = 0),
+    aes(colour = alpha_ij_mean),
+    alpha = 0.30, size = 3
+  ) +
+
+  # 2. PLOT DISTRIBUTION SECOND (Foreground)
+  stat_halfeye(
+    side           = "left",
+    aes(fill = alpha_ij_mean),
+    color          = "black",       # <--- Makes the dot & bar black/visible
+    slab_alpha     = 0.25,          # Transparency of the violin part
+    interval_alpha = 1,             # Make the bar fully opaque
+    point_alpha    = 1,             # Make the dot fully opaque
+    .width         = c(0.5, 0.8),
+    adjust         = 0.8,
+    justification  = 1.05,
+    point_interval = "median_qi"
+  ) +
+
+  # Scales and Themes
+  scale_fill_viridis_d(option = "C", end = 0.95) +
+  scale_colour_viridis_d(option = "C", end = 0.85) +
+  theme_bw(base_size = 20) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92"),
+    strip.text       = element_text(face = "bold")
+  ) +
+  labs(
+    tag = "a",
+    x = expression(paste("Mean interaction strength (", alpha, ")")),
+    y = expression(paste("Explanatory power of community metric (", R^2, ")"))
+  ) +
+  facet_grid(
+    ~ model,
+    scales = "free_y",
+    labeller = as_labeller(c(
+      Actual  = "CV of Actual \ncommunity performance",
+      Null  = "CV of null \ncommunity performance",
+      "Trait summaries" = "Trait summaries"
+    ))
+  ) +
+  ggplot2::ylim(0.2,1)
+
+```
+### Random subsets and Random forest
+
+Random grouping 
+```{r}
+comm_data <- community_measures
+# calculate correlation coefficient between
+# CV_community_perf_info and CV_totab
+# group by alpha_ij_mean, alpha_ij_sd
+
+# create a tibble of r-squared by alpha groups
+comm_r2 <- comm_data |>
+  group_by(alpha_ij_mean, alpha_ij_sd, temperature_replicate) |>
+  summarise(
+    n_pairs = sum(!is.na(CV_totab) & !is.na(CV_community_perf_info)),
+    r_sq = if (n_pairs >= 2) {
+      cor(CV_totab, CV_community_perf_info, use = "complete.obs")^2
+    } else {
+      NA_real_
+    },
+    .groups = "drop"
+  )
+
+# plot result
+#ggplot(comm_r2, aes(x = alpha_ij_mean, y = r_sq)) +
+#  geom_point() +
+#  ylim(0, 1)
+
+# divide the dataset into 1000 random subsets
+set.seed(123)
+n_groups <- 1500
+nrow(comm_data) %% n_groups == 0
+comm_data <- comm_data %>%
+  mutate(rand_group = sample(rep(seq_len(n_groups), length.out = n())))
+
+## calculate r2 by random group
+comm_r2 <- comm_data |>
+  group_by(rand_group) |>
+  summarise(
+    n_pairs = sum(!is.na(CV_totab) & !is.na(CV_community_perf_info)),
+    r_sq = if (n_pairs >= 2) {
+      cor(CV_totab, CV_community_perf_info, use = "complete.obs")^2
+    } else {
+      NA_real_
+    },
+    .groups = "drop"
+  )
+
+
+library(scales)
+
+# 1. Calculate Summary Stats for annotation
+mean_r2 <- mean(comm_r2$r_sq, na.rm = TRUE)
+median_r2 <- median(comm_r2$r_sq, na.rm = TRUE)
+
+# 2. Create the High-Impact Plot
+nicehistot <- ggplot(comm_r2, aes(x = r_sq)) +
+  # Use a density-normalized histogram with a professional color palette
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 40,
+                 fill = "#3B5C7A",
+                 color = "white",
+                 alpha = 0.8) +
+  # Add a smooth density curve
+  geom_density(color = "#1A2E40", linewidth = 1) +
+  theme_bw(base_size = 16) +
+    # Professional Labels
+  labs(
+    title = "Distribution of Model Performance",
+    subtitle = paste("Based on", n_groups, "random subset iterations"),
+    x = expression(Explanatory~Power~(R^2)),
+    y = "Density",
+    tag = "b"
+  ) +
+  # Ensure the x-axis starts at 0
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2))
+```
+
+### Random Forest
+```{r}
+## Analyse
+library(ranger)
+
+set.seed(123)
+
+df <- comm_data |>
+  select(
+    CV_community_perf_info,
+    CV_community_perf_naive,
+    alpha_ij_mean,
+    alpha_ij_sd,
+    richness,
+    CV_totab,
+    real_mean_b_opt,
+    real_sd_b_opt
+  )
+
+rf <- ranger(
+  CV_totab ~ .,
+  data = df,
+  importance = "permutation",
+  num.trees = 1000,
+  mtry = floor(sqrt(ncol(df) - 1))
+)
+
+rf
+
+importance <- sort(rf$variable.importance, decreasing = TRUE)
+importance
+```
+
+## Figure 3 Votka - Volterra
+```{r}
+#| echo: false
+#| warning: false
+#| fig.width: 15
+#| fig.height: 11
+# Create Variable Importance Plot
+clean_labels <- c(
+  "CV_community_perf_info"  = "Actual~CP",
+  "CV_community_perf_naive" = "Null~CP",
+  "alpha_ij_mean"           = "bar(alpha)",
+  "alpha_ij_sd"             = "sd(alpha)",
+  "richness"                = "Species~richness",
+  "real_mean_b_opt"         = "T[opt*','*mean]",
+  "real_sd_b_opt"           = "sd(T[opt*','*i])"  # Updated this line
+)
+
+# 2. Apply to your plot
+plot_importance <- vip::vip(rf, num_features = 10, geom = "point") +
+  # The function(x) parse(text = ...) is what triggers the math rendering
+  scale_x_discrete(labels = function(x) parse(text = clean_labels[x])) + 
+  geom_segment(aes(xend = Variable, yend = 0)) +
+  theme_bw(base_size = 16) +
+  labs(title = "Feature Importance (Permutation)",
+       x = "Predictor Variables",
+       y = "Importance (Increase in MSE)",
+       tag = "c")
+
+
+
+# Extract OOB predictions
+df_results <- df %>%
+  mutate(predicted = rf$predictions)
+
+plot_accuracy <- ggplot(df_results, aes(x = predicted, y = CV_totab)) +
+  geom_point(alpha = 0.4, color = "#3B5C7A") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") + # 1:1 line
+  geom_smooth(method = "lm", color = "black", se = FALSE) + # Trend line
+  theme_bw(base_size = 16) +
+  labs(
+    title = "Observed vs. Predicted",
+    subtitle = paste("OOB R-squared:", round(rf$r.squared, 3)),
+    y = "Observed Instability \nCV(total abuncance)",
+    x = "Predicted Instability (OOB)",
+    tag = "d"
+  )
+
+
+
+
+final_plot <- p / (nicehistot + plot_importance + plot_accuracy) + 
+  # 2. Control the relative heights (Top row slightly taller to accommodate 3 facets)
+  plot_layout(heights = c(1.2, 1)) +
+  # 3. Unify the tags to (a), (b), (c), (d)
+  plot_annotation(tag_levels = 'a', tag_prefix = '(', tag_suffix = ')') & 
+  # 4. Add horizontal and vertical spacing to prevent overlap
+  theme(
+    plot.tag = element_text(face = "bold"),
+    plot.margin = margin(15, 15, 15, 15),
+    # Slightly reduce base size if labels still touch
+    text = element_text(size = 14) 
+  )
+
+print(final_plot)
+```
+
+Figure 3. Explanatory power and random forest modelling of community stability metrics. (a) Relationship between mean interaction strength (\(\alpha\)) and the explanatory power \(R^2\) of community metrics in predicting instability, measured as the coefficient of variation of total abundance. The first two panels correspond to the observed and null community performance (CP) metrics, whereas the third shows the explanatory power of the two trait-based metrics together. Each point represents a group of simulated communities with identical interaction strength and temperature time series, but differing in mean species thermal optimum, richness, variation in species thermal optima, mean and variation of thermal performance curve breadth, and community replicate. Jitter was added for visibility; colours indicate the value of \(\alpha\). Half violin shapes summarise the distribution of explanatory power for each interaction strength level within each metric. (b) Robustness of the observed relationship between the coefficient of variation of CPCs and stability, shown as the distribution of explanatory power across 1,500 random subsets of the data. (c) Predictor importance for community stability ranked by permutation importance. Higher values represent a greater increase in mean squared error when the variable is permuted. (d) Model diagnostic comparing observed and out-of-bag predicted stability. The red dashed line represents the 1:1 identity line; the solid black line shows the linear fit. Predictors include species richness, interaction parameters, community performance variability metrics, and trait-based metrics.
+
+## Consumer-Resource Simulation Results
+
+
+For the consumer-resource model, the main CPC metric used here is the binary
+viability CPC. This follows the consumer-resource report in this repository,
+where viability is treated as the abundance-relevant link between species-level
+temperature responses and total community abundance.
+
+```{r}
+cr_folder <- normalizePath(
+  file.path("..", "resource_consumer", "factorial2"),
+  mustWork = TRUE
+)
+
+cr_community_measures <- readRDS(file.path(cr_folder, "community_measures.RDS")) |>
+  as_tibble()
+
+analysis_data <- cr_community_measures |>
+  mutate(
+    resource_specialization = as.numeric(resource_specialization),
+    resource_specialization_f = factor(resource_specialization)
+  ) |>
+  filter(
+    is.finite(CV_totab),
+    is.finite(CV_community_viability_binary_info),
+    is.finite(CV_community_viability_binary_naive),
+    is.finite(real_mean_b_opt),
+    is.finite(real_sd_b_opt),
+    is.finite(resource_specialization),
+    is.finite(richness)
+  )
+
+n_cases <- nrow(analysis_data)
+n_specialization <- n_distinct(analysis_data$resource_specialization)
+```
+
+The rendered figure uses `r n_cases` valid consumer-resource simulation cases
+across `r n_specialization` resource-specialization levels.
+
+### Explanatory Power By Resource Specialization
+
+```{r}
+models <- list(
+  actual = as.formula("CV_totab ~ CV_community_viability_binary_info"),
+  null = as.formula("CV_totab ~ CV_community_viability_binary_naive"),
+  trait_summaries = as.formula("CV_totab ~ abs(20 - real_mean_b_opt) * real_sd_b_opt")
+)
+
+safe_lm_r2 <- function(formula, data) {
+  fit <- tryCatch(lm(formula, data = data), error = function(e) NULL)
+
+  if (is.null(fit)) {
+    return(NA_real_)
+  }
+
+  r2 <- summary(fit)$r.squared
+
+  if (is.finite(r2)) {
+    r2
+  } else {
+    NA_real_
+  }
+}
+
+results <- analysis_data |>
+  group_by(resource_specialization, env_series_id) |>
+  group_modify(~ {
+    map_df(
+      models,
+      function(formula, data) {
+        tibble(
+          r2 = safe_lm_r2(formula, data),
+          df_red = nrow(data) - length(coef(lm(formula, data = data)))
+        )
+      },
+      data = .x,
+      .id = "model"
+    )
+  }) |>
+  ungroup() |>
+  filter(is.finite(r2)) |>
+  mutate(
+    model = factor(
+      model,
+      levels = c("actual", "null", "trait_summaries"),
+      labels = c(
+        "Actual",
+        "Null",
+        "Trait summaries"
+      )
+    ),
+    resource_specialization_f = factor(resource_specialization)
+  )
+
+panel_a <- ggplot(results, aes(x = resource_specialization_f, y = r2)) +
+  geom_point(
+    position = position_jitter(width = 0.05, height = 0),
+    aes(colour = resource_specialization_f),
+    alpha = 0.30,
+    size = 3
+  ) +
+  stat_halfeye(
+    side = "left",
+    aes(fill = resource_specialization_f),
+    color = "black",
+    slab_alpha = 0.25,
+    interval_alpha = 1,
+    point_alpha = 1,
+    .width = c(0.5, 0.8),
+    adjust = 0.8,
+    justification = 1.05,
+    point_interval = "median_qi"
+  ) +
+  scale_fill_viridis_d(option = "C", end = 0.95) +
+  scale_colour_viridis_d(option = "C", end = 0.85) +
+  coord_cartesian(ylim = c(0, 1)) +
+  facet_grid(
+    ~ model,
+    labeller = as_labeller(c(
+      Actual = "CV of actual binary\nviability CPC",
+      Null = "CV of null binary\nviability CPC",
+      "Trait summaries" = "Trait summaries"
+    ))
+  ) +
+  theme_bw(base_size = 20) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92"),
+    strip.text = element_text(face = "bold")
+  ) +
+  labs(
+    x = "Resource specialization (lambda)",
+    y = expression(paste("Explanatory power of community metric (", R^2, ")"))
+  )
+```
+
+### Random Subsets
+
+```{r}
+comm_data <- analysis_data
+
+set.seed(123)
+n_groups <- min(1500L, max(1L, floor(nrow(comm_data) / 25L)))
+
+comm_r2 <- comm_data |>
+  mutate(rand_group = sample(rep(seq_len(n_groups), length.out = n()))) |>
+  group_by(rand_group) |>
+  summarise(
+    n_pairs = sum(
+      !is.na(CV_totab) &
+        !is.na(CV_community_viability_binary_info)
+    ),
+    r_sq = if (n_pairs >= 2) {
+      cor(
+        CV_totab,
+        CV_community_viability_binary_info,
+        use = "complete.obs"
+      )^2
+    } else {
+      NA_real_
+    },
+    .groups = "drop"
+  ) |>
+  filter(is.finite(r_sq))
+
+mean_r2 <- mean(comm_r2$r_sq, na.rm = TRUE)
+median_r2 <- median(comm_r2$r_sq, na.rm = TRUE)
+
+panel_b <- ggplot(comm_r2, aes(x = r_sq)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 40,
+    fill = "#3B5C7A",
+    color = "white",
+    alpha = 0.8
+  ) +
+  geom_density(color = "#1A2E40", linewidth = 1) +
+  geom_vline(xintercept = median_r2, linetype = "dashed", linewidth = 0.8) +
+  annotate(
+    "text",
+    x = median_r2,
+    y = Inf,
+    label = paste("Median =", round(median_r2, 3)),
+    hjust = -0.05,
+    vjust = 1.4,
+    size = 4
+  ) +
+  theme_bw(base_size = 16) +
+  labs(
+    title = "Distribution of Model Performance",
+    subtitle = paste("Based on", n_groups, "random subset iterations"),
+    x = expression(Explanatory~Power~(R^2)),
+    y = "Density"
+  ) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2))
+```
+
+## Random Forest
+
+```{r}
+set.seed(123)
+
+rf_data <- analysis_data |>
+  select(
+    CV_community_viability_binary_info,
+    CV_community_viability_binary_naive,
+    resource_specialization,
+    richness,
+    CV_totab,
+    real_mean_b_opt,
+    real_sd_b_opt
+  ) |>
+  drop_na()
+
+rf <- ranger(
+  CV_totab ~ .,
+  data = rf_data,
+  importance = "permutation",
+  num.trees = 1000,
+  mtry = floor(sqrt(ncol(rf_data) - 1))
+)
+
+importance_labels <- c(
+  CV_community_viability_binary_info = "Actual binary viability CP",
+  CV_community_viability_binary_naive = "Null binary viability CP",
+  resource_specialization = "Resource specialization",
+  richness = "Species richness",
+  real_mean_b_opt = "Mean thermal optimum",
+  real_sd_b_opt = "SD thermal optimum"
+)
+
+importance_data <- tibble(
+  Variable = names(rf$variable.importance),
+  Importance = as.numeric(rf$variable.importance)
+) |>
+  mutate(
+    Label = recode(Variable, !!!importance_labels),
+    Label = fct_reorder(Label, Importance)
+  ) |>
+  arrange(desc(Importance))
+
+panel_c <- ggplot(importance_data, aes(x = Label, y = Importance)) +
+  geom_segment(aes(xend = Label, y = 0, yend = Importance), colour = "grey55") +
+  geom_point(size = 3, colour = "#3B5C7A") +
+  coord_flip() +
+  theme_bw(base_size = 16) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(
+    title = "Feature Importance (Permutation)",
+    x = "Predictor variables",
+    y = "Importance (Increase in MSE)"
+  )
+
+rf_results <- rf_data |>
+  mutate(predicted = rf$predictions)
+
+panel_d <- ggplot(rf_results, aes(x = predicted, y = CV_totab)) +
+  geom_point(alpha = 0.4, color = "#3B5C7A") +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    color = "red"
+  ) +
+  geom_smooth(method = "lm", color = "black", se = FALSE) +
+  theme_bw(base_size = 16) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(
+    title = "Observed vs. Predicted",
+    subtitle = paste("OOB R-squared:", round(rf$r.squared, 3)),
+    y = "Observed instability\nCV(total abundance)",
+    x = "Predicted instability (OOB)"
+  )
+```
+
+# Figure 3, Consumer-Resource Version
+
+```{r}
+#| echo: false
+#| fig.width: 15
+#| fig.height: 11
+
+final_plot <- panel_a / (panel_b + panel_c + panel_d) +
+  plot_layout(heights = c(1.2, 1)) +
+  plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(
+    plot.tag = element_text(face = "bold"),
+    plot.margin = margin(15, 15, 15, 15),
+    text = element_text(size = 14)
+  )
+
+print(final_plot)
+```
+
+Figure 3, consumer-resource version. (a) Relationship between resource
+specialization and the explanatory power of community metrics in predicting
+instability, measured as the coefficient of variation of total consumer
+abundance. The first two panels use actual and null binary viability CPC
+metrics; the third uses trait summaries based on the distance of the realized
+mean species thermal optimum from the mean temperature and the realized
+standard deviation of species thermal optima. Points are grouped by resource
+specialization and temperature time series, with mean uptake optimum varying
+within groups. (b)
+Robustness of the relationship between binary viability CPC variability and
+instability across random subsets of the data. (c) Permutation importance from
+the random forest model. (d) Observed versus out-of-bag predicted instability
+from the random forest model.
+
+# Empirical study
+
+The new empirical study was purpose-built to test whether CPC variability predicts temporal community stability. Ciliate communities were assembled from five species and selected to span a gradient of expected CPC variability at richness levels of two, three, and four species. Communities were exposed to four fluctuating temperature series with the same colour of autocorrelation used in the Lotka--Volterra simulations (\(\gamma = 0.8\)), and empirical instability was measured as the standard deviation of detrended total community biomass through time.
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+
+library(mgcv)
+
+new_empirical_folder <- here("new_empirical_study")
+
+find_existing_file <- function(paths) {
+  for (path in paths) {
+    if (file.exists(path)) {
+      return(path)
+    }
+  }
+  stop("Could not find any of these files:\n", paste(paths, collapse = "\n"), call. = FALSE)
+}
+
+format_p <- function(p) {
+  ifelse(p < 0.001, "< 0.001", sprintf("%.3f", p))
+}
+
+format_beta <- function(x) {
+  formatC(x, format = "e", digits = 2)
+}
+
+empirical_timeseries_file <- find_existing_file(file.path(
+  new_empirical_folder,
+  c("combined_timeseries_df.csv", "combined_timeseries_df (1).csv")
+))
+
+empirical_ts_raw <- readr::read_csv(empirical_timeseries_file, show_col_types = FALSE)
+empirical_cpcs <- readr::read_csv(
+  file.path(new_empirical_folder, "all_comps.csv"),
+  show_col_types = FALSE
+)
+empirical_tpcs <- readr::read_csv(
+  file.path(new_empirical_folder, "TPC_predicted_dens.csv"),
+  show_col_types = FALSE
+)
+empirical_temps <- readr::read_csv(
+  file.path(new_empirical_folder, "df_temp.csv"),
+  show_col_types = FALSE
+) |>
+  pivot_longer(
+    cols = starts_with("TS"),
+    names_to = "temp_series",
+    values_to = "temperature"
+  )
+empirical_species_cpcs <- readr::read_csv(
+  file.path(new_empirical_folder, "df_CVperf_species.csv"),
+  show_col_types = FALSE
+)
+
+empirical_mean_temp <- mean(empirical_temps$temperature)
+empirical_sd_temp <- sd(empirical_temps$temperature)
+
+empirical_outlier_days <- tribble(
+  ~sample_ID, ~day,
+  "DLP_TS3_2", 4,
+  "PT_TS4_1", 1,
+  "LP_TS4_1", 3
+)
+
+empirical_ts <- empirical_ts_raw |>
+  filter(day > 4) |>
+  mutate(
+    day = day - 4,
+    richness = factor(nchar(composition_name))
+  ) |>
+  anti_join(empirical_outlier_days, by = c("sample_ID", "day"))
+
+empirical_cpcs <- empirical_cpcs |>
+  mutate(
+    temp_series = paste0("TS", temp_series),
+    richness = factor(richness),
+    T_opt_distance = T_opt_mean
+  )
+
+get_pooled_gam_trend <- function(y, day) {
+  if (length(y) >= 4 && n_distinct(day, na.rm = TRUE) >= 4) {
+    trend_data <- tibble(y = y, day = day)
+    smooth_k <- min(5, n_distinct(day, na.rm = TRUE) - 1)
+    trend_model <- gam(y ~ s(day, k = smooth_k), data = trend_data, method = "REML")
+    predict(trend_model, newdata = trend_data)
+  } else {
+    rep(mean(y, na.rm = TRUE), length(y))
+  }
+}
+
+empirical_ts <- empirical_ts |>
+  group_by(composition_name, predict_spec) |>
+  mutate(
+    biomass_trend = get_pooled_gam_trend(biomass, day),
+    biomass_deviation = biomass - biomass_trend
+  ) |>
+  ungroup()
+
+empirical_community_day <- empirical_ts |>
+  group_by(sample_ID, composition_name, temp_series, replicate, richness, day) |>
+  summarise(
+    community_biomass_deviation = sum(biomass_deviation, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+empirical_variability <- empirical_community_day |>
+  group_by(sample_ID, composition_name, temp_series, replicate, richness) |>
+  summarise(
+    sd_biom = sd(community_biomass_deviation),
+    .groups = "drop"
+  )
+
+empirical_population_variability <- empirical_ts |>
+  group_by(sample_ID, composition_name, temp_series, replicate, richness, predict_spec) |>
+  summarise(sd_pop_biom = sd(biomass_deviation), .groups = "drop")
+
+empirical_population_summary <- empirical_population_variability |>
+  left_join(
+    empirical_variability,
+    by = c("sample_ID", "composition_name", "temp_series", "replicate", "richness")
+  ) |>
+  group_by(sample_ID, composition_name, temp_series, replicate, richness) |>
+  summarise(
+    mean_sd_pop = mean(sd_pop_biom),
+    synchrony = unique(sd_biom)^2 / (sum(sd_pop_biom))^2,
+    .groups = "drop"
+  )
+
+empirical_analysis <- empirical_variability |>
+  left_join(
+    empirical_population_summary,
+    by = c("sample_ID", "composition_name", "temp_series", "replicate", "richness")
+  ) |>
+  left_join(
+    empirical_cpcs,
+    by = c("composition_name", "temp_series", "richness")
+  ) |>
+  mutate(log_sd_biom = log(sd_biom)) |>
+  filter(
+    is.finite(log_sd_biom),
+    is.finite(CV_perf_actual),
+    is.finite(CV_perf_null),
+    is.finite(T_opt_distance),
+    is.finite(sd_T_opt)
+  )
+
+extract_main_effect <- function(model, predictor_label, predictor_term = 2) {
+  model_summary <- summary(model)
+  coefficient <- model_summary$coefficients[predictor_term, ]
+
+  tibble(
+    predictor = predictor_label,
+    beta = unname(coefficient["Estimate"]),
+    se = unname(coefficient["Std. Error"]),
+    t_value = unname(coefficient["t value"]),
+    p_value = unname(coefficient["Pr(>|t|)"]),
+    r_squared = model_summary$r.squared,
+    adj_r_squared = model_summary$adj.r.squared
+  )
+}
+
+empirical_simple_models <- list(
+  actual = lm(log_sd_biom ~ CV_perf_actual, data = empirical_analysis),
+  null = lm(log_sd_biom ~ CV_perf_null, data = empirical_analysis),
+  topt_distance = lm(log_sd_biom ~ T_opt_distance, data = empirical_analysis),
+  sd_topt = lm(log_sd_biom ~ sd_T_opt, data = empirical_analysis)
+)
+
+empirical_richness_models <- list(
+  actual = lm(log_sd_biom ~ CV_perf_actual * richness, data = empirical_analysis),
+  null = lm(log_sd_biom ~ CV_perf_null * richness, data = empirical_analysis),
+  topt_distance = lm(log_sd_biom ~ T_opt_distance * richness, data = empirical_analysis),
+  sd_topt = lm(log_sd_biom ~ sd_T_opt * richness, data = empirical_analysis)
+)
+
+empirical_simple_stats <- bind_rows(
+  extract_main_effect(empirical_simple_models$actual, "Actual CP variability"),
+  extract_main_effect(empirical_simple_models$null, "Null CP variability"),
+  extract_main_effect(empirical_simple_models$topt_distance, "|mean Topt - mean temperature|"),
+  extract_main_effect(empirical_simple_models$sd_topt, "sd(Topt)")
+) |>
+  mutate(
+    beta_text = format_beta(beta),
+    p_text = format_p(p_value),
+    r2_text = sprintf("%.2f", r_squared)
+  )
+
+empirical_richness_stats <- bind_rows(
+  extract_main_effect(empirical_richness_models$actual, "Actual CP variability"),
+  extract_main_effect(empirical_richness_models$null, "Null CP variability"),
+  extract_main_effect(empirical_richness_models$topt_distance, "|mean Topt - mean temperature|"),
+  extract_main_effect(empirical_richness_models$sd_topt, "sd(Topt)")
+) |>
+  mutate(
+    beta_text = format_beta(beta),
+    p_text = format_p(p_value),
+    r2_text = sprintf("%.2f", r_squared)
+  )
+
+empirical_obs_simple <- empirical_simple_stats |> filter(predictor == "Actual CP variability")
+empirical_null_simple <- empirical_simple_stats |> filter(predictor == "Null CP variability")
+empirical_topt_distance_simple <- empirical_simple_stats |> filter(predictor == "|mean Topt - mean temperature|")
+empirical_topt_sd_simple <- empirical_simple_stats |> filter(predictor == "sd(Topt)")
+
+empirical_obs_richness <- empirical_richness_stats |> filter(predictor == "Actual CP variability")
+empirical_null_richness <- empirical_richness_stats |> filter(predictor == "Null CP variability")
+empirical_topt_distance_richness <- empirical_richness_stats |> filter(predictor == "|mean Topt - mean temperature|")
+empirical_topt_sd_richness <- empirical_richness_stats |> filter(predictor == "sd(Topt)")
+
+empirical_actual_plus_richness <- lm(log_sd_biom ~ CV_perf_actual + richness, data = empirical_analysis)
+empirical_actual_interaction <- empirical_richness_models$actual
+empirical_anova_actual_plus_richness <- anova(empirical_actual_plus_richness)
+empirical_anova_actual_interaction <- anova(empirical_actual_interaction)
+
+empirical_richness_added_f <- empirical_anova_actual_plus_richness["richness", "F value"]
+empirical_richness_added_df_num <- empirical_anova_actual_plus_richness["richness", "Df"]
+empirical_richness_added_df_den <- df.residual(empirical_actual_plus_richness)
+empirical_richness_added_p <- empirical_anova_actual_plus_richness["richness", "Pr(>F)"]
+
+empirical_interaction_f <- empirical_anova_actual_interaction["CV_perf_actual:richness", "F value"]
+empirical_interaction_df_num <- empirical_anova_actual_interaction["CV_perf_actual:richness", "Df"]
+empirical_interaction_df_den <- df.residual(empirical_actual_interaction)
+empirical_interaction_p <- empirical_anova_actual_interaction["CV_perf_actual:richness", "Pr(>F)"]
+
+empirical_richness_only_r2 <- summary(lm(log_sd_biom ~ richness, data = empirical_analysis))$r.squared
+```
+
+## Figure 4 
+```{r}
+#| echo: false
+#| fig.width: 12
+#| fig.height: 9
+#| warning: false
+
+empirical_richness_colors <- c(
+  "2" = "#800000",
+  "3" = "#767676",
+  "4" = "#FFA319"
+)
+
+empirical_richness_color_scale <- function() {
+  scale_color_manual(
+    name = "Species richness",
+    values = empirical_richness_colors,
+    breaks = names(empirical_richness_colors)
+  )
+}
+
+empirical_theme <- theme_bw(base_size = 16) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92"),
+    strip.text = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
+
+annotate_r2 <- function(r2_text) {
+  annotate(
+    "text",
+    x = -Inf,
+    y = Inf,
+    label = paste0("R^2 == ", r2_text),
+    parse = TRUE,
+    hjust = -0.25,
+    vjust = 1.35,
+    size = 4.5
+  )
+}
+
+plot_actual <- ggplot(
+  empirical_analysis,
+  aes(x = CV_perf_actual, y = log_sd_biom, colour = richness)
+) +
+  geom_point(alpha = 0.55, size = 2) +
+  geom_smooth(method = "lm", linewidth = 1.1, se = TRUE) +
+  annotate_r2(empirical_obs_richness$r2_text) +
+  scale_colour_viridis_d(
+    option = "magma",
+    begin = 0.15,
+    end = 0.9
+  ) +
+  empirical_theme +
+  labs(
+    x = "CV of actual CP",
+    y = "Instability\nlog SD detrended biomass",
+    tag = "(a)"
+  )
+
+plot_null <- ggplot(
+  empirical_analysis,
+  aes(x = CV_perf_null, y = log_sd_biom, colour = richness)
+) +
+  geom_point(alpha = 0.55, size = 2) +
+  geom_smooth(method = "lm", linewidth = 1.1, se = TRUE) +
+  annotate_r2(empirical_null_richness$r2_text) +
+   scale_colour_viridis_d(
+    option = "magma",
+    begin = 0.15,
+    end = 0.9
+  ) +
+  empirical_theme +
+  labs(
+    x = "CV of null CP",
+    y = "Instability\nlog SD detrended biomass",
+    tag = "(b)"
+  )
+
+plot_topt_distance <- ggplot(
+  empirical_analysis,
+  aes(x = T_opt_distance, y = log_sd_biom, colour = richness)
+) +
+  geom_point(alpha = 0.55, size = 2) +
+  geom_smooth(method = "lm", linewidth = 1.1, se = TRUE) +
+  annotate_r2(empirical_topt_distance_richness$r2_text) +
+    scale_colour_viridis_d(
+    option = "magma",
+    begin = 0.15,
+    end = 0.9
+  ) +
+  empirical_theme +
+  labs(
+    x = expression("|" * bar(T)[opt] - bar(T) * "|"),
+    y = "Instability\nlog SD detrended biomass",
+    tag = "(c)"
+  )
+
+plot_sd_topt <- ggplot(
+  empirical_analysis,
+  aes(x = sd_T_opt, y = log_sd_biom, colour = richness)
+) +
+  geom_point(alpha = 0.55, size = 2) +
+  geom_smooth(method = "lm", linewidth = 1.1, se = TRUE) +
+  annotate_r2(empirical_topt_sd_richness$r2_text) +
+    scale_colour_viridis_d(
+    option = "magma",
+    begin = 0.15,
+    end = 0.9
+  ) +
+  empirical_theme +
+  labs(
+    x = expression(sd(T[opt])),
+    y = "Instability\nlog SD detrended biomass",
+    tag = "(d)"
+  )
+
+(plot_actual + plot_null) / (plot_topt_distance + plot_sd_topt) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+```
+
+Figure 4. Purpose-built empirical ciliate experiment. Relationships between empirical community instability and four response-diversity metrics. Instability is the log standard deviation of detrended total community biomass. (a) Actual CPC variability calculated from the temperature series experienced by each microcosm. (b) Null CPC variability calculated from uniformly distributed temperatures. (c) Absolute distance between mean species thermal optimum and mean environmental temperature. (d) Standard deviation of species thermal optima. Points are replicate microcosms; colours indicate species richness; lines show richness-specific linear fits.
+
+Actual CPC variability was the strongest empirical predictor. In a simple single-predictor model it explained `r empirical_obs_simple$r2_text` of the variation in empirical instability (\(\beta =\) `r empirical_obs_simple$beta_text`, \(p\) `r empirical_obs_simple$p_text`), compared with `r empirical_null_simple$r2_text` for the null CPC (\(\beta =\) `r empirical_null_simple$beta_text`, \(p\) `r empirical_null_simple$p_text`). Trait summaries were predictive but weaker: the distance between mean thermal optimum and mean temperature explained `r empirical_topt_distance_simple$r2_text`, and the standard deviation of thermal optima explained `r empirical_topt_sd_simple$r2_text`. When richness and its interaction with actual CPC variability were included, the actual CPC model explained `r empirical_obs_richness$r2_text` of the variation. Richness added explanatory power after actual CPC variability (\(F_{`r empirical_richness_added_df_num`,`r empirical_richness_added_df_den`} =\) `r sprintf("%.2f", empirical_richness_added_f)`, \(p\) `r format_p(empirical_richness_added_p)`), and the richness-by-actual-CPC interaction was also significant (\(F_{`r empirical_interaction_df_num`,`r empirical_interaction_df_den`} =\) `r sprintf("%.2f", empirical_interaction_f)`, \(p\) `r format_p(empirical_interaction_p)`).
+
+
+# Discussion
+
+Community performance curves provide a compact way to connect species-level environmental responses to community-level temporal stability. Across the analyses here, the most important result is no longer only that CPCs perform well in simulations. The new purpose-built ciliate experiment shows the same pattern in an empirical system designed specifically to vary CPC variability. Actual CPC variability was the strongest single predictor of detrended community biomass variability, explaining `r empirical_obs_simple$r2_text` of the variation on its own and `r empirical_obs_richness$r2_text` when richness-specific relationships were included. This is substantially stronger than the null CPC and stronger than the trait summaries based only on thermal optima. Because the experimental temperature series had the same reddened autocorrelation structure as the Lotka--Volterra simulations, the experiment provides a direct empirical test of the central modelling idea: communities whose aggregate predicted performance varies more through the experienced environment should also show more variable total biomass.
+
+The empirical result is important because it tests CPCs under conditions in which the metric had a genuine opportunity to fail. The experiment used independently estimated species thermal performance curves to select communities expected to differ in CPC variability, then exposed those communities to realized fluctuating temperature series. Actual CPC variability outperformed the null CPC, which is exactly what should happen when the experienced temperature sequence matters. The null CPC still had predictive value, indicating that the shape of the community performance curve contains useful information even without the realized environmental sequence. However, the stronger performance of the actual CPC shows that the temporal distribution of environmental conditions is not a minor detail; it improves the link between predicted performance and realized stability.
+
+The Lotka--Volterra simulations show why this result is plausible even when species interact. In that model, species performance enters abundance dynamics directly through temperature-dependent intrinsic growth. Summing species performance curves therefore creates a community-level response curve on a scale that is closely tied to total abundance. Interaction strength reduced explanatory power, as expected, but it did not erase the signal of aggregate species responses. This does not mean that interactions are irrelevant. Rather, it shows that when environmental responses are measured on an appropriate scale, they can explain a large part of the variation in stability even in dynamical systems where interactions also affect abundance.
+
+The consumer-resource simulations add an important qualification. They show that CPCs should not be treated as a single fixed formula that is automatically valid for every model class. In the consumer-resource model, raw temperature-dependent growth rate is not linearly related to total abundance because abundance is mediated by resource supply, resource depletion, mortality, and competition for shared resources. In that setting, a viability-based CPC, which counts the number of species with positive expected net growth through time, is more closely aligned with the community variable being predicted. This result expands the CPC framework rather than weakening it: the central object is not necessarily the sum of raw growth rates, but the sum of species responses after transforming them onto the scale relevant to the community property of interest.
+
+Together, the two modelling frameworks and the empirical experiment suggest a more nuanced view of species responses and interactions. CPCs capture a major stabilizing and destabilizing signal arising from species' environmental responses, but they do not remove the need to think about community structure. In the empirical study, richness modified the relationship between actual CPC variability and community variability. In the consumer-resource simulations, resource specialization affected stability after accounting for viability CPC variability. Interactions and richness therefore still shape how species-level responses become community-level dynamics. The contribution of CPCs is that they provide a mechanistic response-based predictor that can be evaluated even when detailed interaction coefficients are unavailable.
+
+This framing also helps clarify why trait summaries can be useful but incomplete. Mean thermal optimum and variation in thermal optima were predictive in the empirical experiment, but neither matched the explanatory power of actual CPC variability. Trait moments capture only selected features of species responses, whereas CPCs retain more of the shape, breadth, overlap, and environmental weighting of the response curves. In the empirical data, the standard deviation of thermal optima had a stabilizing association, consistent with response diversity, but the CPC integrated this information with curve shape and the realized temperature sequence.
+
+Several limitations remain. First, CPC predictions depend on the quality of the species performance curves used to construct them. If performance curves are estimated under conditions that differ strongly from the community experiment, or if species responses shift in mixtures, CPC predictions may weaken. Second, the correct transformation from species performance to community contribution may differ among systems. The contrast between the Lotka--Volterra and consumer-resource simulations makes this explicit. Third, the empirical experiment was deliberately controlled and used a small pool of microbial consumers. Extending the approach to field communities will require estimating performance curves or response functions from noisier data and identifying the appropriate community variable and response transformation.
+
+Overall, the results support CPC variability as a powerful predictor of community stability. The new empirical experiment gives the strongest evidence in the manuscript that CPCs can predict realized stability, not only simulated stability. The modelling results then explain when and why the approach should work: raw CPCs are appropriate when performance maps directly onto abundance, while transformed CPCs such as viability CPCs may be needed when the link between performance and abundance is mediated by additional mechanisms such as resources. This makes CPCs a flexible framework for predicting stability from species environmental responses while still leaving room for interactions, richness, and resource structure to shape the final dynamics.
+
+
+# Methods
+
+## Literature Review
+
+We searched Web of Science Core Collection on 26 November 2025 for studies linking temporal stability, interspecific interactions, and species-specific environmental responses. The search targeted titles, abstracts, and keywords using terms for temporal stability or variability, interactions, environmental responses, response diversity, and species performance. Records were screened first by title and abstract and then by full text. We retained studies that quantified temporal stability or variability of a community or ecosystem property, considered interspecific interactions, and considered species-specific responses to environmental variation. For each included study, we extracted system type, study type, stability metric, how interactions were represented, whether species-specific responses were considered important, whether interactions were considered important, and which mechanism was judged prevailing when both were discussed.
+
+## Lotka--Volterra Simulations
+
+We simulated community dynamics with a discrete-time Lotka--Volterra model. For species \(i\), realized per-capita growth from time \(t\) to \(t+1\) was
+
+$$
+r_i(t)
+=
+\log N_i(t+1) - \log N_i(t)
+=
+r_{\max,i}(T_t)
+\left(
+1 -
+\frac{\sum_{j=1}^{S} \alpha_{ij}N_j(t)}
+{K_i(T_t)}
+\right),
+$$
+
+where \(N_j(t)\) is abundance of species \(j\), \(\alpha_{ij}\) is the effect of species \(j\) on species \(i\), and \(K_i(T_t)\) is temperature-dependent carrying capacity. Maximum growth rate was
+
+$$
+r_{\max,i}(T)
+=
+b_i(T) - d_i(T).
+$$
+
+Birth rate was a Gaussian function of temperature and death rate was exponential:
+
+$$
+b_i(T)
+=
+a_b
+\exp
+\left[
+-\frac{(T - T_{\mathrm{opt},i})^2}{s_i}
+\right],
+$$
+
+$$
+d_i(T)
+=
+a_d \exp(z_iT).
+$$
+
+Species richness, mean and range of thermal optima, performance-curve breadth, and interaction strength were varied factorially. Intraspecific competition was fixed at \(\alpha_{ii}=1\), and interspecific coefficients were drawn to represent no, intermediate, or strong competitive interactions. Simulations ran for 2,000 time steps. The first 1,000 time steps used constant temperature at 20 °C; the following 1,000 time steps used fluctuating temperatures with mean 20 °C, standard deviation 4 °C, and \(1/f\) temporal autocorrelation with exponent \(\gamma=0.8\).
+
+## Consumer-Resource Simulations
+
+We also simulated a continuous-time consumer-resource model in which consumers interact indirectly through explicit resource depletion. Consumer abundance \(N_i(t)\) and resource concentration \(R_j(t)\) followed
+
+$$
+\frac{dN_i}{dt}
+=
+N_i
+\left[
+e_i\sum_{j=1}^{R} U_{ij}(T,R_j) - d_i
+\right]
++ I_i,
+$$
+
+and
+
+$$
+\frac{dR_j}{dt}
+=
+\rho_j(K_{R,j} - R_j)
+-
+\sum_{i=1}^{S}N_iU_{ij}(T,R_j).
+$$
+
+Resource uptake followed Monod kinetics:
+
+$$
+U_{ij}(T,R_j)
+=
+W_{ij}u_{ij}(T)
+\frac{R_j}{h_{ij}+R_j}.
+$$
+
+The temperature-dependent maximum uptake rate was
+
+$$
+u_{ij}(T)
+=
+a_{u,ij}
+\exp
+\left[
+-\frac{1}{2}
+\left(
+\frac{T-u_{\mathrm{opt},ij}}{\sigma_{u,ij}}
+\right)^2
+\right].
+$$
+
+The model used one shared resource and one private resource per consumer. Resource specialization \(\lambda\) controlled the resource-use weights:
+
+$$
+W_{i,\mathrm{shared}} = 1-\lambda,
+\qquad
+W_{i,\mathrm{private}} = \lambda.
+$$
+
+The factorial design varied consumer richness, resource specialization, mean and range of thermal optima, and mean thermal breadth. Dynamics were simulated with the `lsoda` ODE solver and community instability was measured as the temporal coefficient of variation of total abundance.
+
+## Community Performance Curves
+
+For the Lotka--Volterra model, the raw community performance curve was
+
+$$
+CPC_{\mathrm{raw}}(T)
+=
+\sum_{i=1}^{S} r_i(T),
+$$
+
+where \(r_i(T)\) is the intrinsic growth response of species \(i\). CPC variability was calculated as
+
+$$
+CV(CPC(\mathbf{T}))
+=
+\frac{sd(CPC(\mathbf{T}))}
+{\overline{CPC(\mathbf{T})}},
+$$
+
+where \(\mathbf{T}\) is either the realized temperature time series (actual CPC) or a uniformly distributed set of temperatures (null CPC).
+
+For the consumer-resource model, raw growth rate is not expected to map linearly onto abundance. We therefore also used a binary viability transformation:
+
+$$
+f_{\mathrm{CR}}(g_i(T))
+=
+\begin{cases}
+1, & g_i(T) > 0,\\
+0, & g_i(T) \le 0,
+\end{cases}
+$$
+
+where \(g_i(T)\) is expected net per-capita growth at resource supply. The viability CPC was
+
+$$
+CPC_{\mathrm{viability}}(T)
+=
+\sum_{i=1}^{S} I(g_i(T)>0).
+$$
+
+## Empirical Ciliate Experiment
+
+The empirical experiment used five ciliate species: *Colpidium striatum*, *Dexiostoma campylum*, *Paramecium caudatum*, *Tetrahymena thermophila*, and *Loxocephalus* sp. Species-specific thermal performance curves were estimated in monoculture from growth across seven constant temperatures. These curves were then used to calculate CPCs for all possible two-, three-, and four-species communities. For each richness level, three compositions were selected: the lowest-CV CPC, the highest-CV CPC, and the composition closest to the median CV.
+
+The community experiment crossed three richness levels, three composition classes, four temperature time series, and three replicate microcosms, giving 108 microcosms. Temperature values were drawn from a normal distribution with mean 22.5 °C and standard deviation 3.5 °C. The time series were generated with \(1/f\) autocorrelation using \(\gamma=0.8\), matching the colour of the Lotka--Volterra simulations. Communities were first held at 22.5 °C for four days, after which fluctuating temperature treatments began.
+
+Species densities and biomass were sampled on weekdays using video microscopy. To remove shared long-term temporal trends before estimating stability, species-level biomass was detrended with generalized additive models. For each species-composition combination, we fitted a smooth trend of biomass over day and subtracted the fitted trend from observed biomass. Detrended species-level biomass deviations were summed within each microcosm and sampling day. Empirical community instability was measured as the standard deviation of this detrended total community biomass through time.
+
+We fitted simple linear models relating empirical instability to actual CPC variability, null CPC variability, distance between mean species thermal optimum and mean environmental temperature, and standard deviation of species thermal optima. We then fitted richness-aware models that included richness and the interaction between richness and each focal predictor. These models tested whether richness modified the relationship between CPC variability and observed community instability.
+
+
+# Extended data
+
+## Figure S1 
+Conceptual viability CPC
+```{r}
+#| echo: false
+#| warning: false
+#| fig.width: 10
+#| fig.height: 10
+
+viability_curve_panel <- function(community, community_label, show_title = FALSE, show_x = FALSE) {
+  df_curves <- make_curves(community, T)
+  df_cpc <- get_community_performance(T, community)
+
+  p <- ggplot() +
+    geom_line(
+      data = df_curves,
+      aes(x = T, y = perf, colour = species),
+      alpha = 0.60,
+      linewidth = 1,
+      show.legend = FALSE
+    ) +
+    geom_hline(
+      yintercept = viability_threshold,
+      linetype = "dashed",
+      colour = "grey35",
+      linewidth = 0.6
+    ) +
+    geom_step(
+      data = df_cpc,
+      aes(x = T, y = viability_cpc),
+      colour = "#009E73",
+      linewidth = 1.4
+    ) +
+    scale_colour_manual(values = okabe) +
+    coord_cartesian(ylim = c(0, 1.08)) +
+    theme_minimal(base_size = 13) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "none",
+      plot.title = element_text(hjust = 0.5, size = 12),
+      plot.subtitle = element_text(hjust = 0.5, size = 11)
+    ) +
+    labs(
+      title = if (show_title) "Species responses and viability CP" else NULL,
+      subtitle = community_label,
+      x = "Temperature (°C)",
+      y = "Scaled response"
+    )
+
+  if (!show_x) {
+    p <- p + theme(axis.title.x = element_blank())
+  }
+
+  p
+}
+
+viability_figure_rows <- lapply(seq_along(species_sets), function(i) {
+  community <- species_sets[[i]]
+  actual_values <- get_community_performance(temperature_normal, community)
+  show_title <- i == 1
+  show_x <- i == length(species_sets)
+
+  curve <- viability_curve_panel(
+    community = community,
+    community_label = community_names[[i]],
+    show_title = show_title,
+    show_x = show_x
+  )
+
+  actual_viability <- viability_cpc_distribution_panel(
+    actual_values,
+    title = if (show_title) "Viability CP values\nactual temperatures" else NULL,
+    show_x = show_x
+  )
+
+  curve | actual_viability
+})
+
+wrap_plots(viability_figure_rows, ncol = 1) +
+  plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(
+    plot.tag = element_text(face = "bold"),
+    plot.title = element_text(size = 12, hjust = 0.5)
+  )
+```
+
+Figure S1. Conceptual construction of viability community performance curves (CPCs). The left column shows species-specific thermal performance curves, a conceptual viability threshold (dashed line), and the viability CPC obtained by counting the fraction of species whose performance exceeds that threshold. The right column shows the distribution of viable species counts sampled under the actual temperature series. The figure is conceptual and illustrates the transformation used when the abundance-relevant response is better represented by species viability than by raw performance values.
+
+
+## Figure S2 
+Single trait-based summary 
+```{r}
+#| echo: false
+#| warning: false
+#| fig.width: 12
+#| fig.height: 8
+
+
+# define your models in a list
+models <- list(
+  mean   = as.formula("CV_totab ~ abs(20 - real_mean_b_opt)"),
+  var    = as.formula("CV_totab ~ real_sd_b_opt"))
+
+
+
+# run models for each unique sd_perf_mean
+results <- community_measures %>%
+  dplyr::filter(real_mean_b_opt <24 & real_mean_b_opt> 16) %>%
+  group_by(alpha_ij_mean, env_series_id) %>%
+  group_modify(~ {
+    map_df(models, function(f, dat) {
+      fit <- lm(f, data = dat)
+      tibble(r2 = summary(fit)$r.squared,
+             df_red=fit$df.residual)
+    }, dat = .x, .id = "model")
+  }) %>%
+  ungroup()
+
+results <- results %>%
+  mutate(
+    model = factor(
+      model,
+      levels = c("mean", "var"),
+      labels = c(
+        "mean",
+        "var"
+      )
+    )
+  )
+
+
+
+
+results <- results %>%
+  mutate(alpha_ij_mean = as.factor(alpha_ij_mean))
+
+
+p <- ggplot(results, aes(x = alpha_ij_mean, y = r2)) +
+
+  # 1. PLOT POINTS FIRST (Background)
+  geom_point(
+    position = position_jitter(width = 0.05, height = 0),
+    aes(colour = alpha_ij_mean),
+    alpha = 0.30, size = 3
+  ) +
+
+  # 2. PLOT DISTRIBUTION SECOND (Foreground)
+  stat_halfeye(
+    side           = "left",
+    aes(fill = alpha_ij_mean),
+    color          = "black",       # <--- Makes the dot & bar black/visible
+    slab_alpha     = 0.25,          # Transparency of the violin part
+    interval_alpha = 1,             # Make the bar fully opaque
+    point_alpha    = 1,             # Make the dot fully opaque
+    .width         = c(0.5, 0.8),
+    adjust         = 0.8,
+    justification  = 1.05,
+    point_interval = "median_qi"
+  ) +
+
+  # Scales and Themes
+  scale_fill_viridis_d(option = "C", end = 0.95) +
+  scale_colour_viridis_d(option = "C", end = 0.85) +
+  theme_bw(base_size = 25) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92"),
+    strip.text       = element_text(face = "bold")
+  ) +
+  labs(
+    x = expression(paste("Mean interaction strength (", alpha, ")")),
+    y = expression(paste("Explanatory power of community metric (", R^2, ")"))
+  ) +
+  facet_grid(
+    ~ model,
+    scales = "free_y",
+    labeller = as_labeller(c(
+      mean = "Mean community thermal optima",
+      var    = "SD community thermal optima"
+    ))
+  )
+
+
+
+
+print(p)
+```
+
+Figure S2. Effect of interaction strength on the explanatory power of stability metrics.
+Panels show the explanatory power (R²) of each metric in predicting community stability, expressed as the coefficient of variation of total abundance. The two panels correspond to the two trait-based metrics sd(T_(opt,i) ) and T_(opt,mean). Each point represents a group of simulated communities with identical interaction strength and temperature time series, but differing in mean species thermal optimum, richness, variation in species thermal optima, mean and variation of thermal performance curve breadth, and community replicate. Jitter was added for visibility; colours indicate the value of α. Half violin shapes summarise the distribution of explanatory power for each interaction strength level within each metric. 
+
+
+
+
+<!-- ## Individual communities -->
+
+<!-- ```{r} -->
+<!-- #| echo: false -->
+<!-- plot_file <- here("figures_ms", "figure1_new.png") -->
+
+<!-- # Include the image -->
+<!-- knitr::include_graphics(plot_file) -->
+
+<!-- ``` -->
+
+```{r}
+#| echo: false
+## Make a graph of stability versus sum of derivatives
+
+community_measures <- community_measures |>
+  mutate(cut_real_sd_b_opt = cut(real_sd_b_opt,
+                                 breaks = seq(min(real_sd_b_opt), max(real_sd_b_opt), length.out = 10)),
+         cut_real_mean_b_opt = cut(abs(20 - real_mean_b_opt),
+                                   breaks = seq(min(abs(20 - real_mean_b_opt)), max(abs(20 - real_mean_b_opt)), length.out = 10))
+  )
+
+
+```
+
+## Figure S3
+
+```{r}
+#| echo: false
+#| fig.width: 10
+#| fig.height: 6
+#| 
+ plot_data <- community_measures |>
+  dplyr::filter(real_mean_b_opt > 16 & real_mean_b_opt < 24)
+ggplot(plot_data, aes(x = real_sd_b_opt, y = CV_totab, colour = sd_perf_mean)) +
+  geom_point(alpha = 0.5) +
+  scale_color_viridis_c(
+    option = "magma",
+    begin  = 0.1,
+    end    = 0.9,
+    name   = "Mean breadth of\nperformance curves"
+  ) +
+  theme_bw(base_size = 15) +
+  labs(
+    y = "CV community abundance",
+    x = "SD thermal optima"
+  ) +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+  )
+```
+
+Figure S3. Relationship between trait variability and community stability, modulated by performance curve breadth.
+
+
+
+
+## Figure S4
+
+```{r}
+#| echo: false
+#| fig.width: 10
+#| fig.height: 6
+#| warning: FALSE
+
+empirical_model_comparison <- bind_rows(
+  empirical_simple_stats |>
+    transmute(
+      model = predictor,
+      r2 = r_squared,
+      model_type = "Single predictor"
+    ),
+  empirical_richness_stats |>
+    transmute(
+      model = predictor,
+      r2 = r_squared,
+      model_type = "With richness interaction"
+    )
+) |>
+  mutate(
+    model = factor(
+      model,
+      levels = c(
+        "Actual CPC variability",
+        "Null CPC variability",
+        "|mean Topt - mean temperature|",
+        "sd(Topt)"
+      ),
+      labels = c(
+        "Actual CPC",
+        "Null CPC",
+        "|mean Topt - mean T|",
+        "sd(Topt)"
+      )
+    )
+  )
+
+ggplot(empirical_model_comparison, aes(x = model, y = r2, fill = model_type)) +
+  geom_col(position = position_dodge(width = 0.72), width = 0.62, colour = "grey25") +
+  geom_text(
+    aes(label = sprintf("%.2f", r2), group = model_type),
+    position = position_dodge(width = 0.72),
+    vjust = -0.35,
+    size = 4
+  ) +
+  scale_fill_manual(values = c("Single predictor" = "#3B5C7A", "With richness interaction" = "#B56B45")) +
+  coord_cartesian(ylim = c(0, 0.8)) +
+  theme_bw(base_size = 25) +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92"),
+    axis.text.x = element_text(angle = 20, hjust = 1),
+    legend.position = "bottom"
+  ) +
+  labs(
+    x = NULL,
+    y = expression(paste("Empirical explanatory power (", R^2, ")")),
+    fill = NULL
+  ) 
+
+
+```
+Figure S4. Explanatory power of empirical stability metrics in the new ciliate experiment.
+Bars show \(R^2\) for simple single-predictor models and for models that include species richness and its interaction with the focal predictor. Empirical instability is measured as the log standard deviation of detrended total community biomass.
+
+
+
+
+## Figure S5
+```{r}
+#| echo: false
+#| fig.width: 12
+#| fig.height: 12
+#| warning: FALSE
+# ---------------------------------------------------------------
+# Helper function: extract interaction strength for a case
+# ---------------------------------------------------------------
+get_alpha_label <- function(expt, case_id) {
+  alpha_val <- expt %>%
+    dplyr::filter(case_id == !!case_id) %>%
+    dplyr::pull(alpha_ij_mean) %>%
+    unique()
+
+  paste0("Interaction strength (ᾱij) = ", signif(alpha_val, 3))
+}
+
+# ---------------------------------------------------------------
+# Function to generate plots for one community
+# ---------------------------------------------------------------
+make_plots_for_one_community <- function(experiment_folder, case_id_oi) {
+
+  expt <- readRDS(paste0(experiment_folder, "experiment_table.RDS"))
+
+  conn_temperatures <- dbConnect(SQLite(), paste0(experiment_folder, "temperatures.db"))
+  temperatures <- tbl(conn_temperatures, "temperatures")
+
+  conn_dynamics <- dbConnect(SQLite(), paste0(experiment_folder, "dynamics.db"))
+  dynamics <- tbl(conn_dynamics, "dynamics")
+
+  conn_arbitrary_derivs <- dbConnect(SQLite(), paste0(experiment_folder, "arbitrary_derivs.db"))
+  arbitrary_derivs <- tbl(conn_arbitrary_derivs, "derivs")
+
+  env_series_oi <- expt %>%
+    filter(case_id == case_id_oi) %>%
+    pull(env_series_id)
+
+  temperatures_oi <- collect(filter(temperatures, env_series_id == env_series_oi))
+  species_pars4 <- collect(filter(arbitrary_derivs, case_id == case_id_oi))
+  dynamics_oi <- collect(filter(dynamics, case_id == case_id_oi))
+
+  p_tempseries <- ggplot(temperatures_oi, aes(time, temperature)) +
+    geom_line() +
+    theme_bw()
+
+  p_igrtemp <- ggplot(species_pars4, aes(temperature, igr, col = species_id)) +
+    geom_line() +
+    theme_bw()
+
+  p_dynamics <- ggplot(dynamics_oi,
+                       aes(time, log10(Abundance), col = Species_ID)) +
+    geom_line() +
+    ylim(c(0, 2.5)) +
+    theme_bw()
+
+  list(
+    p_tempseries = p_tempseries,
+    p_igrtemp = p_igrtemp,
+    p_dynamics = p_dynamics
+  )
+}
+
+# ---------------------------------------------------------------
+# Load experiment
+# ---------------------------------------------------------------
+experiment_folder_location <- here("simulation_study", "plot_effect_interactions")
+experiment_name <- "data"
+experiment_folder <- create_experiment_folder(experiment_folder_location, experiment_name)
+
+expt <- readRDS(paste0(experiment_folder, "experiment_table.RDS"))
+
+sub <- expt %>%
+  filter(community_seed == 662714)
+
+# ---------------------------------------------------------------
+# Case 1: low interaction strength
+# ---------------------------------------------------------------
+case_id_1 <- sub$case_id[1]
+alpha_lab_1 <- get_alpha_label(expt, case_id_1)
+
+graphs_1 <- make_plots_for_one_community(experiment_folder, case_id_1)
+
+plot_no_int <-
+  (graphs_1$p_igrtemp + labs(subtitle = alpha_lab_1)) /
+  graphs_1$p_tempseries /
+  graphs_1$p_dynamics
+
+# ---------------------------------------------------------------
+# Case 2: higher interaction strength
+# ---------------------------------------------------------------
+case_id_2 <- sub$case_id[6]
+alpha_lab_2 <- get_alpha_label(expt, case_id_2)
+
+graphs_2 <- make_plots_for_one_community(experiment_folder, case_id_2)
+
+plot_yes_int <-
+  (graphs_2$p_igrtemp + labs(subtitle = alpha_lab_2)) /
+  graphs_2$p_tempseries /
+  graphs_2$p_dynamics
+
+# ---------------------------------------------------------------
+# Final combined figure
+# ---------------------------------------------------------------
+(plot_no_int | plot_yes_int) +
+  plot_annotation(
+    title = "Effect of interaction strength on community dynamics",
+    subtitle = "All parameters identical except mean interaction strength (ᾱij)",
+    theme = theme(plot.title = element_text(hjust = 0.5))
+  )
+
+
+
+```
+
+Figure S5. Effect of interspecific interaction strength on species dynamics. Top panels show species growth rates as a function of temperature for two community composed of the same two species. The only difference between the two community is the average interaction strength (α_ij). These two-species communities are then exposed to the same temperature time series (middle panels). The bottom panels show species dynamics in absence (left) and with strong (right) competition. 
+
+
+## Figure S6 and S7
+
+```{r}
+#| echo: false
+#| fig.width: 12
+#| fig.height: 12
+#| warning: FALSE
+
+a <- community_measures |>
+  dplyr::filter(real_mean_b_opt > 16 &
+                  real_mean_b_opt < 24) |>
+  ggplot(aes(x = synchrony_perf_naive,
+             y = sync_ab,
+             col = as.factor(alpha_ij_sd))) +
+  geom_point(alpha = 0.6) +
+  theme_bw(base_size = 20) +
+  scale_color_viridis_d(
+    option = "magma",
+    begin  = 0.2,
+    end    = 0.9,
+    name   = "Species interspecific\ninteractions",
+    labels = c("No", "Yes")
+  ) +
+  labs(x = "Synchrony predicted by the null performance metric",
+       y = "Synchorny based on abundance",
+       tag = "(a)")
+
+
+b <- community_measures |>
+  dplyr::filter(real_mean_b_opt > 16 &
+                  real_mean_b_opt < 24) |>
+  ggplot(aes(x = synchrony_perf_info,
+             y = sync_ab,
+             col = as.factor(alpha_ij_sd))) +
+  geom_point(alpha = 0.6) +
+  theme_bw(base_size = 20) +
+  scale_color_viridis_d(
+    option = "magma",
+    begin  = 0.2,
+    end    = 0.9,
+    name   = "Species interspecific\ninteractions",
+    labels = c("No", "Yes")
+  ) +
+  labs(x = "Synchrony predicted by the actual performance metric",
+       y = "Synchorny based on abundance",
+       tag = "(b)")
+
+
+a / b
+```
+
+
+
+
+# Additional figures
+## Variability of performance null and community stability - effect of species interactions
+
+```{r}
+#| echo: false
+
+
+
+# --- null performance metric ----------------------------------------------
+
+r2_naive <- plot_data |>
+  group_by(alpha_ij_mean, alpha_ij_sd) |>
+  summarise(
+    r2 = summary(lm(CV_totab ~ CV_community_perf_naive, data = cur_data()))$r.squared,
+    .groups = "drop"
+  )
+
+p_naive <- ggplot(plot_data, aes(x = CV_community_perf_naive, y = CV_totab, col = sync_ab)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(alpha_ij_mean ~ alpha_ij_sd, labeller = label_both) +
+  geom_text(
+    data = r2_naive,
+    aes(label = paste0("R² = ", round(r2, 2))),
+    x = -Inf, y = Inf,
+    hjust = -0.1, vjust = 1.1,
+    inherit.aes = FALSE
+  ) +
+  theme_bw(base_size = 15) +
+  scale_color_viridis_c(option = "magma", begin = 0.1, end = 0.9) +
+  labs( tag = "a", y = "CV community abundance", x = "CPC Variability null") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# --- Informed performance metric -------------------------------------------
+
+r2_info <- plot_data |>
+  group_by(alpha_ij_mean, alpha_ij_sd) |>
+  summarise(
+    r2 = summary(lm(CV_totab ~ CV_community_perf_info, data = cur_data()))$r.squared,
+    .groups = "drop"
+  )
+
+p_info <- ggplot(plot_data, aes(x = CV_community_perf_info, y = CV_totab, col = sync_ab)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(alpha_ij_mean ~ alpha_ij_sd, labeller = label_both) +
+  geom_text(
+    data = r2_info,
+    aes(label = paste0("R² = ", round(r2, 2))),
+    x = -Inf, y = Inf,
+    hjust = -0.1, vjust = 1.1,
+    inherit.aes = FALSE
+  ) +
+   theme_bw(base_size = 15) +
+  scale_color_viridis_c(option = "magma", begin = 0.1, end = 0.9) +
+  labs( tag = "b", y = "CV community abundance", x = "CPC Variability Actual") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+```
+
+
+
+```{r}
+#| echo: false
+
+# --- SD of thermal optima ---------------------------------------------------
+
+r2_sd <- plot_data |>
+  group_by(alpha_ij_mean, alpha_ij_sd) |>
+  summarise(
+    r2 = summary(lm(CV_totab ~ real_sd_b_opt, data = cur_data()))$r.squared,
+    .groups = "drop"
+  )
+
+p_sd <- ggplot(plot_data, aes(x = real_sd_b_opt, y = CV_totab, col = sync_ab)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(alpha_ij_mean ~ alpha_ij_sd, labeller = label_both) +
+  geom_text(
+    data = r2_sd,
+    aes(label = paste0("R² = ", round(r2, 2))),
+    x = -Inf, y = Inf,
+    hjust = -0.1, vjust = 1.1,
+    inherit.aes = FALSE
+  ) +
+   theme_bw(base_size = 15) +
+  scale_color_viridis_c(option = "magma", begin = 0.1, end = 0.9) +
+  labs( tag = "c", y = "CV community abundance", x = "SD thermal optima") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# --- Mean thermal optima ----------------------------------------------------
+
+r2_mean <- plot_data |>
+  group_by(alpha_ij_mean, alpha_ij_sd) |>
+  summarise(
+    r2 = summary(lm(CV_totab ~ abs(20 - real_mean_b_opt), data = cur_data()))$r.squared,
+    .groups = "drop"
+  )
+
+p_mean <- ggplot(plot_data, aes(x = abs(20 - real_mean_b_opt), y = CV_totab, col = sync_ab)) +
+  geom_point(alpha = 0.5) +
+  facet_wrap(alpha_ij_mean ~ alpha_ij_sd, labeller = label_both) +
+  geom_text(
+    data = r2_mean,
+    aes(label = paste0("R² = ", round(r2, 2))),
+    x = -Inf, y = Inf,
+    hjust = -0.1, vjust = 1.1,
+    inherit.aes = FALSE
+  ) +
+   theme_bw(base_size = 15) +
+  scale_color_viridis_c(option = "magma", begin = 0.1, end = 0.9) +
+  labs( tag = "d", y = "CV community abundance", x = "Mean thermal optima") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+A closer look at the relationship between variability of CPCs, trait-based metrics, stability, and synchorny 
+
+```{r}
+#| echo: false
+#| fig.width: 18
+#| fig.height: 10
+col_scale <- scale_color_viridis_c(
+  option = "magma",
+  begin = 0.2,
+  end   = 0.8
+)
+
+p_naive <- p_naive + col_scale
+p_info  <- p_info  + col_scale
+p_mean  <- p_mean  + col_scale
+p_sd    <- p_sd    + col_scale
+
+# ---- Common color scale (unchanged) ----
+sync_scale <- scale_color_viridis_c(
+  option = "magma",
+  begin  = 0.2,
+  end    = 0.8,
+  name   = "Synchrony"
+)
+
+# ---- Theme WITHOUT legend.position ----
+common_theme <- theme(
+  legend.key.height = unit(0.9, "cm"),
+  legend.key.width  = unit(2, "cm"),
+  legend.title      = element_text(size = 13),
+  legend.text       = element_text(size = 11),
+  plot.title        = element_text(hjust = 0.5)
+)
+
+# ---- Apply to all plots ----
+p_naive <- p_naive + sync_scale + common_theme
+p_info  <- p_info  + sync_scale + common_theme
+p_mean  <- p_mean  + sync_scale + common_theme
+p_sd    <- p_sd    + sync_scale + common_theme
+
+# ---- Combine plots  ----
+final_plot <-
+  (p_naive | p_info) /
+  (p_mean  | p_sd) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
+
+final_plot
+```

@@ -1,0 +1,476 @@
+---
+title: "Constructing Community Performance Curves On The Right Scale"
+subtitle: "A general link-function view for LV and consumer-resource models"
+format:
+  html:
+    toc: true
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+library(DBI)
+library(RSQLite)
+library(dplyr)
+library(ggplot2)
+library(tibble)
+library(tidyr)
+
+find_existing_path <- function(paths) {
+  for (path in paths) {
+    if (file.exists(path)) {
+      return(normalizePath(path))
+    }
+  }
+  stop(
+    "Could not find any of these paths:\n",
+    paste(paths, collapse = "\n"),
+    call. = FALSE
+  )
+}
+
+lv_folder <- find_existing_path(c(
+  "../../CPCs_predict_CommunityStability/simulation_study/final_small/data",
+  "CPCs_predict_CommunityStability/simulation_study/final_small/data"
+))
+
+cr_folder <- find_existing_path(c(
+  "factorial2",
+  "../../non-repo stuff/consumer_resource/factorial2"
+))
+
+intrinsic_growth_gaussian_local <- function(a_b_i, b_opt_i, s_i, a_d_i, z_i, temperature) {
+  a_b_i * exp(-(temperature - b_opt_i)^2 / s_i) - a_d_i * exp(z_i * temperature)
+}
+
+calculate_lv_binary_cpc_cv <- function(community, temperatures) {
+  species_viability <- vapply(
+    seq_along(community$a_b_i),
+    function(i) {
+      intrinsic_growth_gaussian_local(
+        community$a_b_i[i],
+        community$b_opt_i[i],
+        community$s_i[i],
+        community$a_d_i[i],
+        community$z_i[i],
+        temperatures
+      ) > 0
+    },
+    logical(length(temperatures))
+  )
+  community_viability <- rowSums(species_viability)
+  stats::sd(community_viability) / mean(community_viability)
+}
+
+lv_temperatures_con <- dbConnect(SQLite(), file.path(lv_folder, "temperatures.db"))
+lv_temperatures <- dbReadTable(lv_temperatures_con, "temperatures") |>
+  as_tibble()
+dbDisconnect(lv_temperatures_con)
+
+lv_temperature_lookup <- split(lv_temperatures$temperature, lv_temperatures$env_series_id)
+
+lv_measures <- readRDS(file.path(lv_folder, "community_measures.RDS")) |>
+  as_tibble() |>
+  mutate(
+    CV_community_viability_binary_info = vapply(
+      seq_len(n()),
+      function(row_index) {
+        calculate_lv_binary_cpc_cv(
+          community_object[[row_index]],
+          lv_temperature_lookup[[env_series_id[[row_index]]]]
+        )
+      },
+      numeric(1)
+    )
+  )
+
+cr_measures <- readRDS(file.path(cr_folder, "community_measures.RDS")) |>
+  as_tibble()
+
+plot_data <- bind_rows(
+  lv_measures |>
+    transmute(
+      model_type = "Lotka-Volterra",
+      link_function = "Identity link",
+      CPC_CV = CV_community_perf_info,
+      community_stability = 1 / CV_totab
+    ),
+  lv_measures |>
+    transmute(
+      model_type = "Lotka-Volterra",
+      link_function = "Binary link",
+      CPC_CV = CV_community_viability_binary_info,
+      community_stability = 1 / CV_totab
+    ),
+  cr_measures |>
+    transmute(
+      model_type = "Consumer-resource",
+      link_function = "Identity link",
+      CPC_CV = CV_community_perf_info,
+      community_stability = 1 / CV_totab
+    ),
+  cr_measures |>
+    transmute(
+      model_type = "Consumer-resource",
+      link_function = "Binary link",
+      CPC_CV = CV_community_viability_binary_info,
+      community_stability = 1 / CV_totab
+    )
+) |>
+  filter(is.finite(CPC_CV), is.finite(community_stability))
+
+plot_summaries <- plot_data |>
+  group_by(model_type, link_function) |>
+  summarise(
+    n = n(),
+    cpc_cv_sd = stats::sd(CPC_CV),
+    r_squared = ifelse(
+      cpc_cv_sd > 0,
+      summary(lm(community_stability ~ CPC_CV))$r.squared,
+      NA_real_
+    ),
+    .groups = "drop"
+  ) |>
+  mutate(
+    panel_label = ifelse(
+      is.na(r_squared),
+      paste0("n = ", n, "\nCPC CV constant"),
+      paste0("n = ", n, "\nR^2 = ", formatC(r_squared, format = "f", digits = 2))
+    )
+  )
+
+plot_model_link_case <- function(data, model, link) {
+  plot_data_one <- data |>
+    filter(model_type == model, link_function == link)
+  plot_summary_one <- plot_summaries |>
+    filter(model_type == model, link_function == link)
+
+  plot <- ggplot(plot_data_one, aes(CPC_CV, community_stability)) +
+    geom_point(alpha = 0.65, size = 1.7, colour = "#2f5d7c") +
+    geom_text(
+      data = plot_summary_one,
+      aes(x = Inf, y = Inf, label = panel_label),
+      inherit.aes = FALSE,
+      hjust = 1.08,
+      vjust = 1.15,
+      size = 3.4
+    ) +
+    labs(
+      title = paste(model, "-", link),
+      x = "CV of CPC",
+      y = "Community stability, 1 / CV(total abundance)"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+
+  if (isTRUE(plot_summary_one$cpc_cv_sd > 0)) {
+    plot <- plot +
+      geom_smooth(method = "lm", se = TRUE, colour = "black", linewidth = 0.75)
+  }
+
+  plot
+}
+
+plot_model_link_case_filtered <- function(data, model, link, max_cpc_cv) {
+  plot_data_one <- data |>
+    filter(
+      model_type == model,
+      link_function == link,
+      CPC_CV <= max_cpc_cv
+    )
+
+  plot_summary_one <- plot_data_one |>
+    summarise(
+      n = n(),
+      cpc_cv_sd = stats::sd(CPC_CV),
+      r_squared = ifelse(
+        cpc_cv_sd > 0,
+        summary(lm(community_stability ~ CPC_CV))$r.squared,
+        NA_real_
+      ),
+      .groups = "drop"
+    ) |>
+    mutate(
+      panel_label = ifelse(
+        is.na(r_squared),
+        paste0("n = ", n, "\nCPC CV constant"),
+        paste0("n = ", n, "\nR^2 = ", formatC(r_squared, format = "f", digits = 2))
+      )
+    )
+
+  plot <- ggplot(plot_data_one, aes(CPC_CV, community_stability)) +
+    geom_point(alpha = 0.65, size = 1.7, colour = "#2f5d7c") +
+    geom_text(
+      data = plot_summary_one,
+      aes(x = Inf, y = Inf, label = panel_label),
+      inherit.aes = FALSE,
+      hjust = 1.08,
+      vjust = 1.15,
+      size = 3.4
+    ) +
+    labs(
+      title = paste0(model, " - ", link, " (CV CPC <= ", max_cpc_cv, ")"),
+      x = "CV of CPC",
+      y = "Community stability, 1 / CV(total abundance)"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+
+  if (isTRUE(plot_summary_one$cpc_cv_sd > 0)) {
+    plot <- plot +
+      geom_smooth(method = "lm", se = TRUE, colour = "black", linewidth = 0.75)
+  }
+
+  plot
+}
+```
+
+## Main Idea
+
+A community performance curve (CPC) should not necessarily be constructed by
+summing raw species performance curves. It should be constructed by first
+mapping each species' temperature-dependent performance onto the scale of the
+community variable whose stability we want to predict, and only then summing
+across species.
+
+For stability of total abundance or total biomass, the species-level curve
+should therefore represent expected contribution to abundance or biomass, not
+just raw physiological performance or intrinsic growth rate.
+
+The general construction is:
+
+1. Compute each species' temperature-dependent performance curve.
+2. Transform each species' performance to the scale of the focal community
+   variable.
+3. Sum the transformed species curves to obtain the CPC.
+4. Use the temporal variability of that CPC to predict the stability of the
+   focal community variable.
+
+In notation:
+
+$$
+P_i(T) = \text{raw performance of species } i \text{ at temperature } T
+$$
+
+$$
+A_i(T) = f_{\text{model}, y}(P_i(T))
+$$
+
+$$
+CPC_y(T) = \sum_i A_i(T)
+$$
+
+where $y$ is the community variable whose stability is being predicted, such
+as total abundance or total biomass. The function $f_{\text{model}, y}$ is a
+model-specific link from raw species performance to expected contribution to
+that community variable.
+
+## Why The Link Function Matters
+
+When predicting the stability of total abundance or total biomass, the relevant
+question is not simply whether species have high or low raw performance. The
+relevant question is how changes in species performance translate into changes
+in species abundance or biomass.
+
+If raw performance is approximately linearly related to abundance, then summing
+raw performance curves can be appropriate. But if abundance responds
+nonlinearly, or if performance mainly determines whether a species can persist
+at all, then raw performance is on the wrong scale. In that case, the species
+performance curve should first be transformed onto an abundance or biomass
+scale before constructing the CPC.
+
+This gives a general rule:
+
+> The CPC should be a sum of species' expected contributions to the focal
+> community variable, not necessarily a sum of raw species performance curves.
+
+## Lotka-Volterra Model
+
+In the Lotka-Volterra model used here, raw temperature-dependent performance is
+closely linked to expected abundance by the model structure. Specifically, the
+model links intrinsic growth rate and carrying capacity in a way that makes
+higher performance correspond approximately linearly to higher expected
+abundance.
+
+This means that, for predicting stability of total abundance, the link function
+from performance to abundance-scale contribution can be treated as approximately
+identity:
+
+$$
+f_{\text{LV}, abundance}(P_i(T)) \approx P_i(T)
+$$
+
+So the LV abundance-scale CPC can be written as:
+
+$$
+CPC_{\text{LV}}(T) = \sum_i P_i(T)
+$$
+
+In words, each species contributes its raw performance value to the community
+performance curve. This is why the original CV of community performance is a
+reasonable predictor in the LV case: the scale of the summed curve is already
+close to the scale of the abundance response.
+
+## Consumer-Resource Model
+
+In the consumer-resource model, raw species performance is not linearly related
+to equilibrium abundance. Instead, intrinsic growth rate mainly determines
+whether a species can persist under the current thermal and resource context.
+
+If growth is negative, the species declines to very low abundance. If growth is
+positive, the species can grow, but its eventual abundance is then determined by
+other conditions, including:
+
+- resource supply;
+- mortality;
+- conversion efficiency;
+- half-saturation constants;
+- competition with other consumers for shared resources.
+
+Therefore, for predicting stability of total abundance, the appropriate
+abundance-scale transformation is closer to a viability threshold than to an
+identity link:
+
+$$
+f_{\text{CR}, abundance}(P_i(T)) =
+\begin{cases}
+1, & P_i(T) > 0 \\
+0, & P_i(T) \le 0
+\end{cases}
+$$
+
+The consumer-resource abundance-scale CPC is then:
+
+$$
+CPC_{\text{CR viability}}(T) =
+\sum_i I(P_i(T) > 0)
+$$
+
+where $I(P_i(T) > 0)$ is 1 when species $i$ has positive growth at
+temperature $T$, and 0 otherwise.
+
+In words, the CPC is the number of viable species through time. Its CV measures
+how variable the viable species pool is under the temperature sequence.
+
+## Implication For The Previous CPC
+
+The previous CV of community performance summed raw species growth-rate curves.
+That is defensible for the LV model because raw performance is approximately on
+the abundance scale. But in the consumer-resource model, raw growth rate is not
+the abundance response. It mostly controls whether a species can persist, while
+the abundance of persistent species is shaped by resource-mediated interactions.
+
+This explains why the raw-performance CPC can fail to predict stability in the
+consumer-resource model. It is summing performance on the wrong scale.
+
+The viability-transformed CPC works better because it applies a model-specific
+link function before summing:
+
+$$
+\text{raw performance} \rightarrow \text{expected abundance-scale contribution}
+\rightarrow \text{community performance curve}
+$$
+
+## Proposed General Definition
+
+For any model and any focal community variable, define a CPC as:
+
+$$
+CPC_y(T) = \sum_i f_{\text{model}, y}(P_i(T))
+$$
+
+where:
+
+- $P_i(T)$ is the raw species performance curve;
+- $y$ is the community variable whose stability is being predicted;
+- $f_{\text{model}, y}$ maps raw species performance to expected contribution
+  to $y$;
+- the CPC is formed only after this transformation.
+
+For the current models and response variable:
+
+| Model | Focal stability variable | Link from species performance to contribution |
+|---|---|---|
+| Lotka-Volterra | Total abundance | Approximately identity |
+| Consumer-resource | Total abundance | Binary viability, $I(P_i(T) > 0)$ |
+
+This framing keeps the CPC concept general while allowing the species-level
+performance-to-abundance link to differ among models.
+
+## Four Model-Link Cases
+
+The figure below applies the same logic to actual simulation outputs. Stability
+is measured as \(1 / CV_{total abundance}\). The x-axis is the CV of the CPC
+constructed under each model-link combination.
+
+For the Lotka-Volterra model, the identity-link CPC comes directly from the
+saved community-measures output. The binary-link CPC is calculated from the
+saved LV community objects and the saved temperature series by thresholding each
+species' growth curve at zero before summing. For the consumer-resource model,
+both identity-link and binary-link CPC CVs come from the saved factorial
+community-measures output.
+
+### Lotka-Volterra, Identity Link
+
+```{r}
+plot_model_link_case(plot_data, "Lotka-Volterra", "Identity link")
+```
+
+### Lotka-Volterra, Binary Link
+
+```{r}
+plot_model_link_case(plot_data, "Lotka-Volterra", "Binary link")
+```
+
+In this LV simulation set, the binary-link CPC is constant. The LV death
+parameter is zero, so the Gaussian intrinsic growth curve is positive for every
+species across the sampled temperature series. After thresholding at zero, each
+species is always viable, and the summed binary CPC has no temporal variation.
+This makes the binary-link CPC uninformative for this LV dataset.
+
+### Consumer-Resource, Identity Link
+
+```{r}
+plot_model_link_case(plot_data, "Consumer-resource", "Identity link")
+```
+
+The identity-link CPC in the consumer-resource model has a few very large CV
+values. The same relationship with values above 50 excluded is:
+
+```{r}
+plot_model_link_case_filtered(plot_data, "Consumer-resource", "Identity link", 50)
+```
+
+### Consumer-Resource, Binary Link
+
+```{r}
+plot_model_link_case(plot_data, "Consumer-resource", "Binary link")
+```
+
+The expected pattern is visible in these simulations. The identity link is the
+appropriate scale transformation for the Lotka-Volterra model, while the binary
+viability link is much more informative for the consumer-resource model. The
+off-diagonal cases are useful controls: they show what happens when the CPC is
+constructed on a scale that is less closely tied to the abundance variable whose
+stability is being predicted.
+
+## Practical Interpretation
+
+When the focal response is total abundance or biomass stability, the CPC should
+answer this question:
+
+> How much total abundance or biomass would the community be expected to support
+> at each temperature, given the species that can contribute under that model?
+
+In the LV model, species' raw performance values already approximate their
+expected abundance contributions. In the consumer-resource model, the first-order
+abundance contribution is closer to whether each species is viable at all.
+
+Thus, the strong predictive performance of
+`CV_community_viability_binary_info` in the small factorial consumer-resource
+experiment is not just an empirical accident. It supports the idea that CPCs
+should be constructed on the scale of the community variable whose stability is
+being predicted.

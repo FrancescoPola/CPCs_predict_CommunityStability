@@ -1,0 +1,339 @@
+---
+title: "Figure 3 With Consumer-Resource Simulations"
+editor: source
+execute:
+  echo: true
+  message: false
+  warning: false
+  cache: false
+format:
+  html:
+    page-layout: full
+    code-fold: false
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    embed-resources: true
+---
+
+```{r}
+rm(list = ls())
+
+library(tidyverse)
+library(patchwork)
+library(ggdist)
+library(ranger)
+library(scales)
+```
+
+# Consumer-Resource Simulation Results
+
+This document recreates the structure of Figure 3 from `extended_results.qmd`,
+but uses the consumer-resource simulation results in
+`resource_consumer/factorial2/community_measures.RDS`.
+
+For the consumer-resource model, the main CPC metric used here is the binary
+viability CPC. This follows the consumer-resource report in this repository,
+where viability is treated as the abundance-relevant link between species-level
+temperature responses and total community abundance.
+
+```{r}
+cr_folder <- normalizePath(
+  file.path("..", "resource_consumer", "factorial2"),
+  mustWork = TRUE
+)
+
+community_measures <- readRDS(file.path(cr_folder, "community_measures.RDS")) |>
+  as_tibble()
+
+analysis_data <- community_measures |>
+  mutate(
+    resource_specialization = as.numeric(resource_specialization),
+    resource_specialization_f = factor(resource_specialization)
+  ) |>
+  filter(
+    is.finite(CV_totab),
+    is.finite(CV_community_viability_binary_info),
+    is.finite(CV_community_viability_binary_naive),
+    is.finite(real_mean_b_opt),
+    is.finite(real_sd_b_opt),
+    is.finite(resource_specialization),
+    is.finite(richness)
+  )
+
+n_cases <- nrow(analysis_data)
+n_specialization <- n_distinct(analysis_data$resource_specialization)
+
+```
+
+The rendered figure uses `r n_cases` valid consumer-resource simulation cases
+across `r n_specialization` resource-specialization levels.
+
+## Explanatory Power By Resource Specialization
+
+```{r}
+models <- list(
+  actual = as.formula("1/CV_totab ~ CV_community_viability_binary_info"),
+  null = as.formula("1/CV_totab ~ CV_community_viability_binary_naive"),
+  trait_summaries = as.formula("1/CV_totab ~ abs(20 - real_mean_b_opt) * real_sd_b_opt")
+)
+
+safe_lm_r2 <- function(formula, data) {
+  fit <- tryCatch(lm(formula, data = data), error = function(e) NULL)
+
+  if (is.null(fit)) {
+    return(NA_real_)
+  }
+
+  r2 <- summary(fit)$adj.r.squared
+
+  if (is.finite(r2)) {
+    r2
+  } else {
+    NA_real_
+  }
+}
+
+results <- analysis_data |>
+  group_by(resource_specialization, env_series_id) |>
+  group_modify(~ {
+    map_df(
+      models,
+      function(formula, data) {
+        tibble(
+          r2 = safe_lm_r2(formula, data),
+          df_red = nrow(data) - length(coef(lm(formula, data = data)))
+        )
+      },
+      data = .x,
+      .id = "model"
+    )
+  }) |>
+  ungroup() |>
+  filter(is.finite(r2)) |>
+  mutate(
+    model = factor(
+      model,
+      levels = c("actual", "null", "trait_summaries"),
+      labels = c(
+        "Actual",
+        "Null",
+        "Trait summaries"
+      )
+    ),
+    resource_specialization_f = factor(resource_specialization)
+  )
+
+panel_a <- ggplot(results, aes(x = resource_specialization_f, y = r2)) +
+  geom_point(
+    position = position_jitter(width = 0.05, height = 0),
+    aes(colour = resource_specialization_f),
+    alpha = 0.30,
+    size = 3
+  ) +
+  stat_halfeye(
+    side = "left",
+    aes(fill = resource_specialization_f),
+    color = "black",
+    slab_alpha = 0.25,
+    interval_alpha = 1,
+    point_alpha = 1,
+    .width = c(0.5, 0.8),
+    adjust = 0.8,
+    justification = 1.05,
+    point_interval = "median_qi"
+  ) +
+  scale_fill_viridis_d(option = "C", end = 0.95) +
+  scale_colour_viridis_d(option = "C", end = 0.85) +
+  coord_cartesian(ylim = c(0, 1)) +
+  facet_grid(
+    ~ model,
+    labeller = as_labeller(c(
+      Actual = "CV of actual binary\nviability CPC",
+      Null = "CV of null binary\nviability CPC",
+      "Trait summaries" = "Trait summaries"
+    ))
+  ) +
+  theme_bw(base_size = 20) +
+  theme(
+    legend.position = "none",
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "grey92"),
+    strip.text = element_text(face = "bold")
+  ) +
+  labs(
+    x = "Resource specialization (lambda)",
+    y = expression(paste("Explanatory power of community metric (", R^2, ")"))
+  )
+```
+
+## Random Subsets
+
+```{r}
+comm_data <- analysis_data
+
+set.seed(123)
+n_groups <- min(1500L, max(1L, floor(nrow(comm_data) / 25L)))
+
+comm_r2 <- comm_data |>
+  mutate(rand_group = sample(rep(seq_len(n_groups), length.out = n()))) |>
+  group_by(rand_group) |>
+  summarise(
+    n_pairs = sum(
+      !is.na(CV_totab) &
+        !is.na(CV_community_viability_binary_info)
+    ),
+    r_sq = if (n_pairs >= 2) {
+      cor(
+        CV_totab,
+        CV_community_viability_binary_info,
+        use = "complete.obs"
+      )^2
+    } else {
+      NA_real_
+    },
+    .groups = "drop"
+  ) |>
+  filter(is.finite(r_sq))
+
+mean_r2 <- mean(comm_r2$r_sq, na.rm = TRUE)
+median_r2 <- median(comm_r2$r_sq, na.rm = TRUE)
+
+panel_b <- ggplot(comm_r2, aes(x = r_sq)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    bins = 40,
+    fill = "#3B5C7A",
+    color = "white",
+    alpha = 0.8
+  ) +
+  geom_density(color = "#1A2E40", linewidth = 1) +
+  geom_vline(xintercept = median_r2, linetype = "dashed", linewidth = 0.8) +
+  annotate(
+    "text",
+    x = median_r2,
+    y = Inf,
+    label = paste("Median =", round(median_r2, 3)),
+    hjust = -0.05,
+    vjust = 1.4,
+    size = 4
+  ) +
+  theme_bw(base_size = 16) +
+  labs(
+    title = "Distribution of Model Performance",
+    subtitle = paste("Based on", n_groups, "random subset iterations"),
+    x = expression(Explanatory~Power~(R^2)),
+    y = "Density"
+  ) +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2))
+```
+
+## Random Forest
+
+```{r}
+set.seed(123)
+
+rf_data <- analysis_data |>
+  select(
+    CV_community_viability_binary_info,
+    CV_community_viability_binary_naive,
+    resource_specialization,
+    richness,
+    CV_totab,
+    real_mean_b_opt,
+    real_sd_b_opt
+  ) |>
+  drop_na()
+
+rf <- ranger(
+  CV_totab ~ .,
+  data = rf_data,
+  importance = "permutation",
+  num.trees = 1000,
+  mtry = floor(sqrt(ncol(rf_data) - 1))
+)
+
+importance_labels <- c(
+  CV_community_viability_binary_info = "Actual binary viability CPC",
+  CV_community_viability_binary_naive = "Null binary viability CPC",
+  resource_specialization = "Resource specialization",
+  richness = "Species richness",
+  real_mean_b_opt = "Mean thermal optimum",
+  real_sd_b_opt = "SD thermal optimum"
+)
+
+importance_data <- tibble(
+  Variable = names(rf$variable.importance),
+  Importance = as.numeric(rf$variable.importance)
+) |>
+  mutate(
+    Label = recode(Variable, !!!importance_labels),
+    Label = fct_reorder(Label, Importance)
+  ) |>
+  arrange(desc(Importance))
+
+panel_c <- ggplot(importance_data, aes(x = Label, y = Importance)) +
+  geom_segment(aes(xend = Label, y = 0, yend = Importance), colour = "grey55") +
+  geom_point(size = 3, colour = "#3B5C7A") +
+  coord_flip() +
+  theme_bw(base_size = 16) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(
+    title = "Feature Importance (Permutation)",
+    x = "Predictor variables",
+    y = "Importance (Increase in MSE)"
+  )
+
+rf_results <- rf_data |>
+  mutate(predicted = rf$predictions)
+
+panel_d <- ggplot(rf_results, aes(x = predicted, y = CV_totab)) +
+  geom_point(alpha = 0.4, color = "#3B5C7A") +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    linetype = "dashed",
+    color = "red"
+  ) +
+  geom_smooth(method = "lm", color = "black", se = FALSE) +
+  theme_bw(base_size = 16) +
+  theme(panel.grid.minor = element_blank()) +
+  labs(
+    title = "Observed vs. Predicted",
+    subtitle = paste("OOB R-squared:", round(rf$r.squared, 3)),
+    y = "Observed instability\nCV(total abundance)",
+    x = "Predicted instability (OOB)"
+  )
+```
+
+# Figure 3, Consumer-Resource Version
+
+```{r}
+#| echo: false
+#| fig.width: 15
+#| fig.height: 11
+
+final_plot <- panel_a / (panel_b + panel_c + panel_d) +
+  plot_layout(heights = c(1.2, 1)) +
+  plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(
+    plot.tag = element_text(face = "bold"),
+    plot.margin = margin(15, 15, 15, 15),
+    text = element_text(size = 14)
+  )
+
+print(final_plot)
+```
+
+Figure 3, consumer-resource version. (a) Relationship between resource
+specialization and the explanatory power of community metrics in predicting
+instability, measured as the coefficient of variation of total consumer
+abundance. The first two panels use actual and null binary viability CPC
+metrics; the third uses trait summaries based on the distance of the realized
+mean species thermal optimum from the mean temperature and the realized
+standard deviation of species thermal optima. Points are grouped by resource
+specialization, temperature time series, and mean uptake optimum. (b)
+Robustness of the relationship between binary viability CPC variability and
+instability across random subsets of the data. (c) Permutation importance from
+the random forest model. (d) Observed versus out-of-bag predicted instability
+from the random forest model.

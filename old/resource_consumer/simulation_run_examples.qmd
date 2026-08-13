@@ -1,0 +1,344 @@
+---
+title: "Example Consumer-Resource Simulation Runs"
+subtitle: "Environment, resource use, species performance, and biomass dynamics"
+format:
+  html:
+    toc: true
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+library(DBI)
+library(RSQLite)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(tibble)
+library(tidyr)
+
+run_folder <- file.path("factorial1")
+if (!file.exists(file.path(run_folder, "experiment_table.RDS"))) {
+  run_folder <- file.path("non-repo stuff", "consumer_resource", "factorial1")
+}
+run_folder <- normalizePath(run_folder)
+
+experiment_table <- readRDS(file.path(run_folder, "experiment_table.RDS")) |>
+  as_tibble()
+
+selected_cases <- experiment_table |>
+  filter(
+    u_opt_mean == 20,
+    u_opt_range == 4,
+    sd_u_mean == 2,
+    temperature_replicate == 1,
+    resource_specialization %in% c(0, 0.5, 1)
+  ) |>
+  arrange(resource_specialization)
+
+selected_case_ids <- selected_cases$case_id
+selected_env_series_ids <- unique(selected_cases$env_series_id)
+
+sql_strings <- function(connection, values) {
+  paste(as.character(dbQuoteString(connection, values)), collapse = ", ")
+}
+
+dynamics_con <- dbConnect(SQLite(), file.path(run_folder, "dynamics.db"))
+dynamics <- dbGetQuery(
+  dynamics_con,
+  paste0(
+    "SELECT * FROM dynamics WHERE case_id IN (",
+    sql_strings(dynamics_con, selected_case_ids),
+    ")"
+  )
+) |>
+  as_tibble()
+dbDisconnect(dynamics_con)
+
+resources_con <- dbConnect(SQLite(), file.path(run_folder, "resources.db"))
+resources <- dbGetQuery(
+  resources_con,
+  paste0(
+    "SELECT * FROM resources WHERE case_id IN (",
+    sql_strings(resources_con, selected_case_ids),
+    ")"
+  )
+) |>
+  as_tibble()
+dbDisconnect(resources_con)
+
+temperatures_con <- dbConnect(SQLite(), file.path(run_folder, "temperatures.db"))
+temperatures <- dbGetQuery(
+  temperatures_con,
+  paste0(
+    "SELECT * FROM temperatures WHERE env_series_id IN (",
+    sql_strings(temperatures_con, selected_env_series_ids),
+    ")"
+  )
+) |>
+  as_tibble()
+dbDisconnect(temperatures_con)
+
+case_lookup <- selected_cases |>
+  transmute(
+    case_id,
+    lambda = resource_specialization,
+    env_series_id,
+    u_opt_mean,
+    u_opt_range,
+    sd_u_mean,
+    temperature_replicate,
+    label = paste0("lambda = ", resource_specialization, " (", case_id, ")")
+  )
+
+species_ids <- paste0("Spp", seq_len(max(selected_cases$richness)))
+species_colours <- setNames(
+  grDevices::hcl.colors(length(species_ids), palette = "Dark 3"),
+  species_ids
+)
+
+resource_colours <- setNames(
+  grDevices::hcl.colors(10, palette = "Dark 3"),
+  paste0("Res", seq_len(10))
+)
+
+resource_matrix_long <- function(community) {
+  resource_names <- paste0("Res", seq_len(community$R))
+  as_tibble(community$resource_use_ij, .name_repair = ~ resource_names) |>
+    mutate(Species_ID = paste0("Spp", seq_len(community$S)), .before = 1) |>
+    pivot_longer(
+      cols = all_of(resource_names),
+      names_to = "Resource_ID",
+      values_to = "use_weight"
+    ) |>
+    mutate(
+      Species_ID = factor(Species_ID, levels = paste0("Spp", seq_len(community$S))),
+      Resource_ID = factor(Resource_ID, levels = resource_names)
+    )
+}
+
+species_parameter_table <- function(community) {
+  tibble(
+    Species_ID = paste0("Spp", seq_len(community$S)),
+    u_max = community$u_max_i,
+    u_opt = community$u_opt_i,
+    sd_u = community$sd_u_i,
+    death_rate = community$d_i,
+    conversion_efficiency = community$e_i
+  )
+}
+
+net_growth_at_supply <- function(community, temperature_values) {
+  rows <- vector("list", community$S * length(temperature_values))
+  row_index <- 1
+  for (i in seq_len(community$S)) {
+    for (temp in temperature_values) {
+      u_max_temp <- community$a_u_ij[i, ] *
+        exp(-0.5 * ((temp - community$u_opt_ij[i, ]) / community$sd_u_ij[i, ])^2)
+      uptake_at_supply <- community$resource_use_ij[i, ] *
+        u_max_temp *
+        community$K_R_j /
+        (community$h_ij[i, ] + community$K_R_j)
+      rows[[row_index]] <- tibble(
+        Species_ID = paste0("Spp", i),
+        temperature = temp,
+        net_growth_at_resource_supply = community$e_i[i] * sum(uptake_at_supply) - community$d_i[i]
+      )
+      row_index <- row_index + 1
+    }
+  }
+  bind_rows(rows)
+}
+
+thin_group <- function(data, max_points = 1600) {
+  if (nrow(data) <= max_points) {
+    return(data)
+  }
+  data[unique(round(seq(1, nrow(data), length.out = max_points))), , drop = FALSE]
+}
+
+dynamics_plot <- dynamics |>
+  mutate(Abundance_plot = pmax(Abundance, 1e-8)) |>
+  group_by(case_id, Species_ID) |>
+  group_modify(~ thin_group(.x)) |>
+  ungroup()
+
+resources_plot <- resources |>
+  group_by(case_id, Resource_ID) |>
+  group_modify(~ thin_group(.x)) |>
+  ungroup()
+
+total_biomass_data <- dynamics |>
+  group_by(case_id, time) |>
+  summarise(total_biomass = sum(Abundance), .groups = "drop") |>
+  left_join(case_lookup, by = "case_id")
+
+total_biomass_plot <- total_biomass_data |>
+  group_by(case_id) |>
+  group_modify(~ thin_group(.x)) |>
+  ungroup()
+```
+
+## Cases Shown
+
+These runs are drawn from the `factorial1` consumer-resource experiment. They share the same environment and thermal trait settings, but differ in resource specialization. This makes the panels useful for comparing how the resource utilisation pattern changes the dynamics.
+
+```{r}
+case_lookup |>
+  select(
+    case_id,
+    lambda,
+    env_series_id,
+    u_opt_mean,
+    u_opt_range,
+    sd_u_mean,
+    temperature_replicate
+  ) |>
+  kable()
+```
+
+## Environment
+
+```{r fig.width=8, fig.height=4}
+temperatures |>
+  distinct(env_series_id, time, temperature) |>
+  ggplot(aes(time, temperature)) +
+  geom_line(linewidth = 0.4, colour = "black") +
+  labs(
+    x = "Time",
+    y = "Temperature"
+  ) +
+  theme_bw()
+```
+
+## Community Biomass Comparison
+
+```{r fig.width=8, fig.height=4.5}
+total_biomass_plot |>
+  mutate(lambda = factor(lambda, levels = sort(unique(lambda)))) |>
+  ggplot(aes(time, total_biomass, colour = lambda)) +
+  geom_line(linewidth = 0.55) +
+  scale_colour_manual(
+    values = setNames(grDevices::hcl.colors(nrow(case_lookup), "Dark 3"), sort(unique(case_lookup$lambda)))
+  ) +
+  labs(
+    x = "Time",
+    y = "Total community biomass",
+    colour = "Resource specialization"
+  ) +
+  theme_bw()
+```
+
+```{r results='asis', fig.width=8, fig.height=4.6}
+for (row_index in seq_len(nrow(selected_cases))) {
+  case <- selected_cases[row_index, ]
+  community <- case$community_object[[1]]
+  case_id <- case$case_id
+  lambda <- case$resource_specialization
+  env_series_id <- case$env_series_id
+
+  case_temperatures <- temperatures |>
+    filter(env_series_id == !!env_series_id)
+
+  parameter_table <- species_parameter_table(community)
+  temperature_grid <- seq(
+    min(case_temperatures$temperature, parameter_table$u_opt) - 2,
+    max(case_temperatures$temperature, parameter_table$u_opt) + 2,
+    length.out = 300
+  )
+  net_growth_curves <- net_growth_at_supply(community, temperature_grid)
+
+  case_dynamics <- dynamics_plot |>
+    filter(case_id == !!case_id)
+
+  case_resources <- resources_plot |>
+    filter(case_id == !!case_id)
+
+  case_total_biomass <- total_biomass_plot |>
+    filter(case_id == !!case_id)
+
+  cat("\n\n## Resource Specialization ", lambda, " (", case_id, ")\n\n", sep = "")
+
+  cat("### Resource Utilisation Pattern\n\n")
+  print(
+    ggplot(resource_matrix_long(community), aes(Resource_ID, Species_ID, fill = use_weight)) +
+      geom_tile(colour = "white", linewidth = 0.25) +
+      scale_fill_gradient(low = "white", high = "#2F5D7C", limits = c(0, 1)) +
+      labs(
+        x = "Resource",
+        y = "Species",
+        fill = "Use weight"
+      ) +
+      coord_equal() +
+      theme_bw() +
+      theme(
+        panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+  )
+
+  cat("\n\n### Species Performance Curves\n\n")
+  print(
+    ggplot(net_growth_curves, aes(temperature, net_growth_at_resource_supply, colour = Species_ID)) +
+      annotate(
+        "rect",
+        xmin = min(case_temperatures$temperature),
+        xmax = max(case_temperatures$temperature),
+        ymin = -Inf,
+        ymax = Inf,
+        alpha = 0.08,
+        fill = "grey35"
+      ) +
+      geom_hline(yintercept = 0, linetype = "dashed", colour = "grey45") +
+      geom_line(linewidth = 0.75) +
+      scale_colour_manual(values = species_colours) +
+      labs(
+        x = "Temperature",
+        y = "Net growth at resource supply",
+        colour = "Species"
+      ) +
+      theme_bw()
+  )
+
+  cat("\n\n### Species Dynamics\n\n")
+  print(
+    ggplot(case_dynamics, aes(time, Abundance_plot, colour = Species_ID)) +
+      geom_line(linewidth = 0.45) +
+      scale_y_log10() +
+      scale_colour_manual(values = species_colours) +
+      labs(
+        x = "Time",
+        y = "Species abundance, log10 scale",
+        colour = "Species"
+      ) +
+      theme_bw()
+  )
+
+  cat("\n\n### Resource Dynamics\n\n")
+  print(
+    ggplot(case_resources, aes(time, Resource, colour = Resource_ID)) +
+      geom_line(linewidth = 0.45) +
+      scale_colour_manual(values = resource_colours) +
+      labs(
+        x = "Time",
+        y = "Resource concentration",
+        colour = "Resource"
+      ) +
+      theme_bw()
+  )
+
+  cat("\n\n### Community Biomass Dynamics\n\n")
+  print(
+    ggplot(case_total_biomass, aes(time, total_biomass)) +
+      geom_line(linewidth = 0.55, colour = "black") +
+      labs(
+        x = "Time",
+        y = "Total community biomass"
+      ) +
+      theme_bw()
+  )
+}
+```

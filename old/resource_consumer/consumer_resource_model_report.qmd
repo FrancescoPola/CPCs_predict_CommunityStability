@@ -1,0 +1,1250 @@
+---
+title: "Consumer-Resource Model And Viability CPCs"
+subtitle: "Mechanistic dynamics, CPC construction, and factorial results"
+format:
+  html:
+    toc: true
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+library(DBI)
+library(RSQLite)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(tibble)
+library(tidyr)
+
+find_existing_path <- function(paths) {
+  for (path in paths) {
+    if (file.exists(path)) {
+      return(normalizePath(path))
+    }
+  }
+  stop(
+    "Could not find any of these paths:\n",
+    paste(paths, collapse = "\n"),
+    call. = FALSE
+  )
+}
+
+format_num <- function(x, digits = 3) {
+  formatC(x, format = "f", digits = digits)
+}
+
+format_p <- function(p) {
+  ifelse(p < 0.001, "< 0.001", formatC(p, format = "f", digits = 3))
+}
+
+sql_strings <- function(connection, values) {
+  paste(as.character(dbQuoteString(connection, values)), collapse = ", ")
+}
+
+read_sqlite_cases <- function(db_path, table_name, case_ids) {
+  if (length(case_ids) == 0) {
+    return(tibble())
+  }
+  connection <- dbConnect(SQLite(), db_path)
+  on.exit(dbDisconnect(connection), add = TRUE)
+  dbGetQuery(
+    connection,
+    paste0(
+      "SELECT * FROM ", table_name, " WHERE case_id IN (",
+      sql_strings(connection, case_ids),
+      ")"
+    )
+  ) |>
+    as_tibble()
+}
+
+thin_group <- function(data, max_points = 1600) {
+  if (nrow(data) <= max_points) {
+    return(data)
+  }
+  data[unique(round(seq(1, nrow(data), length.out = max_points))), , drop = FALSE]
+}
+
+intrinsic_growth_gaussian_local <- function(a_b_i, b_opt_i, s_i, a_d_i, z_i, temperature) {
+  a_b_i * exp(-(temperature - b_opt_i)^2 / s_i) - a_d_i * exp(z_i * temperature)
+}
+
+calculate_lv_binary_cpc_cv <- function(community, temperatures) {
+  species_viability <- vapply(
+    seq_along(community$a_b_i),
+    function(i) {
+      intrinsic_growth_gaussian_local(
+        community$a_b_i[i],
+        community$b_opt_i[i],
+        community$s_i[i],
+        community$a_d_i[i],
+        community$z_i[i],
+        temperatures
+      ) > 0
+    },
+    logical(length(temperatures))
+  )
+  community_viability <- rowSums(species_viability)
+  stats::sd(community_viability) / mean(community_viability)
+}
+
+resource_matrix_long <- function(community) {
+  resource_names <- paste0("Res", seq_len(community$R))
+  as_tibble(community$resource_use_ij, .name_repair = ~ resource_names) |>
+    mutate(Species_ID = paste0("Spp", seq_len(community$S)), .before = 1) |>
+    pivot_longer(
+      cols = all_of(resource_names),
+      names_to = "Resource_ID",
+      values_to = "use_weight"
+    ) |>
+    mutate(
+      Species_ID = factor(Species_ID, levels = paste0("Spp", seq_len(community$S))),
+      Resource_ID = factor(Resource_ID, levels = resource_names)
+    )
+}
+
+species_parameter_table <- function(community) {
+  tibble(
+    Species_ID = paste0("Spp", seq_len(community$S)),
+    u_max = community$u_max_i,
+    u_opt = community$u_opt_i,
+    sd_u = community$sd_u_i,
+    death_rate = community$d_i,
+    conversion_efficiency = community$e_i
+  )
+}
+
+net_growth_at_supply <- function(community, temperature_values) {
+  rows <- vector("list", community$S * length(temperature_values))
+  row_index <- 1
+  for (i in seq_len(community$S)) {
+    for (temp in temperature_values) {
+      u_max_temp <- community$a_u_ij[i, ] *
+        exp(-0.5 * ((temp - community$u_opt_ij[i, ]) / community$sd_u_ij[i, ])^2)
+      uptake_at_supply <- community$resource_use_ij[i, ] *
+        u_max_temp *
+        community$K_R_j /
+        (community$h_ij[i, ] + community$K_R_j)
+      rows[[row_index]] <- tibble(
+        Species_ID = paste0("Spp", i),
+        temperature = temp,
+        net_growth_at_resource_supply = community$e_i[i] * sum(uptake_at_supply) - community$d_i[i]
+      )
+      row_index <- row_index + 1
+    }
+  }
+  bind_rows(rows)
+}
+
+community_cpc_curves <- function(species_performance_curves) {
+  species_performance_curves |>
+    group_by(temperature) |>
+    summarise(
+      `Growth-rate CPC` = sum(net_growth_at_resource_supply),
+      `Binary viability CPC` = sum(net_growth_at_resource_supply > 0),
+      .groups = "drop"
+    ) |>
+    pivot_longer(
+      cols = c(`Growth-rate CPC`, `Binary viability CPC`),
+      names_to = "CPC_type",
+      values_to = "CPC_value"
+    )
+}
+
+cr_folder <- find_existing_path(c(
+  "factorial2",
+  "../../non-repo stuff/consumer_resource/factorial2"
+))
+
+lv_folder <- find_existing_path(c(
+  "../CPCs_predict_CommunityStability/simulation_study/final_small/data",
+  "CPCs_predict_CommunityStability/simulation_study/final_small/data"
+))
+
+community_measures <- readRDS(file.path(cr_folder, "community_measures.RDS")) |>
+  as_tibble()
+
+analysis_data <- community_measures |>
+  mutate(
+    community_stability = 1 / CV_totab,
+    resource_specialization = as.numeric(resource_specialization)
+  ) |>
+  filter(
+    is.finite(community_stability),
+    is.finite(CV_community_viability_binary_info),
+    is.finite(CV_community_viability_soft_info),
+    is.finite(CV_community_viability_binary_naive),
+    is.finite(CV_community_viability_soft_naive),
+    is.finite(CV_community_perf_info),
+    is.finite(CV_community_perf_naive)
+  )
+
+single_predictor_fit <- function(predictor) {
+  model <- lm(reformulate(predictor, response = "community_stability"), analysis_data)
+  model_summary <- summary(model)
+  tibble(
+    predictor = predictor,
+    r = unname(cor(analysis_data[[predictor]], analysis_data$community_stability)),
+    r_squared = model_summary$r.squared,
+    slope = unname(coef(model)[2]),
+    p_value = unname(coef(model_summary)[2, 4])
+  )
+}
+
+predictor_comparison <- bind_rows(lapply(
+  c(
+    "CV_community_viability_binary_info",
+    "CV_community_viability_soft_info",
+    "CV_community_viability_binary_naive",
+    "CV_community_viability_soft_naive",
+    "CV_community_perf_info",
+    "CV_community_perf_naive"
+  ),
+  single_predictor_fit
+)) |>
+  mutate(
+    predictor_label = recode(
+      predictor,
+      CV_community_viability_binary_info = "Viability CPC CV, informed binary",
+      CV_community_viability_soft_info = "Viability CPC CV, informed soft",
+      CV_community_viability_binary_naive = "Viability CPC CV, naive binary",
+      CV_community_viability_soft_naive = "Viability CPC CV, naive soft",
+      CV_community_perf_info = "Growth-rate CPC CV, informed",
+      CV_community_perf_naive = "Growth-rate CPC CV, naive"
+    )
+  ) |>
+  arrange(desc(r_squared))
+
+binary_model <- lm(
+  community_stability ~ CV_community_viability_binary_info,
+  analysis_data
+)
+
+adjusted_model <- lm(
+  community_stability ~
+    CV_community_viability_binary_info +
+    resource_specialization +
+    u_opt_mean +
+    u_opt_range +
+    sd_u_mean,
+  analysis_data
+)
+
+binary_summary <- summary(binary_model)
+adjusted_summary <- summary(adjusted_model)
+binary_slope <- unname(coef(binary_model)[2])
+binary_p <- unname(coef(binary_summary)[2, 4])
+binary_r2 <- binary_summary$r.squared
+adjusted_r2 <- adjusted_summary$r.squared
+adjusted_binary_p <- unname(coef(adjusted_summary)["CV_community_viability_binary_info", "Pr(>|t|)"])
+resource_specialization_slope <- unname(coef(adjusted_model)["resource_specialization"])
+resource_specialization_p <- unname(coef(adjusted_summary)["resource_specialization", "Pr(>|t|)"])
+adjusted_r2_gain <- adjusted_r2 - binary_r2
+
+experiment_summary <- analysis_data |>
+  summarise(
+    cases = n(),
+    community_replicates = n_distinct(community_replicate),
+    temperature_replicates = n_distinct(temperature_replicate),
+    resource_specialization_levels = n_distinct(resource_specialization),
+    min_specialization = min(resource_specialization),
+    max_specialization = max(resource_specialization)
+  )
+
+experiment_table <- readRDS(file.path(cr_folder, "experiment_table.RDS")) |>
+  as_tibble()
+
+selected_cases <- experiment_table |>
+  filter(
+    u_opt_mean == 20,
+    u_opt_range == 4,
+    sd_u_mean == 2,
+    temperature_replicate == 1,
+    resource_specialization %in% c(0, 0.5, 1)
+  ) |>
+  group_by(resource_specialization) |>
+  slice(1) |>
+  ungroup() |>
+  arrange(resource_specialization)
+
+selected_case_ids <- selected_cases$case_id
+selected_env_series_ids <- unique(selected_cases$env_series_id)
+
+dynamics <- read_sqlite_cases(
+  db_path = file.path(cr_folder, "dynamics.db"),
+  table_name = "dynamics",
+  case_ids = selected_case_ids
+)
+
+resources <- read_sqlite_cases(
+  db_path = file.path(cr_folder, "resources.db"),
+  table_name = "resources",
+  case_ids = selected_case_ids
+)
+
+temperatures_con <- dbConnect(SQLite(), file.path(cr_folder, "temperatures.db"))
+temperatures <- dbGetQuery(
+  temperatures_con,
+  paste0(
+    "SELECT * FROM temperatures WHERE env_series_id IN (",
+    sql_strings(temperatures_con, selected_env_series_ids),
+    ")"
+  )
+) |>
+  as_tibble()
+dbDisconnect(temperatures_con)
+
+case_lookup <- selected_cases |>
+  transmute(
+    case_id,
+    lambda = resource_specialization,
+    env_series_id,
+    u_opt_mean,
+    u_opt_range,
+    sd_u_mean,
+    temperature_replicate
+  )
+
+species_ids <- paste0("Spp", seq_len(max(selected_cases$richness)))
+species_colours <- setNames(
+  grDevices::hcl.colors(length(species_ids), palette = "Dark 3"),
+  species_ids
+)
+
+resource_colours <- setNames(
+  grDevices::hcl.colors(10, palette = "Dark 3"),
+  paste0("Res", seq_len(10))
+)
+
+lambda_levels <- sort(unique(case_lookup$lambda))
+lambda_colours <- setNames(
+  grDevices::hcl.colors(length(lambda_levels), palette = "Dark 3"),
+  as.character(lambda_levels)
+)
+
+dynamics_plot <- dynamics |>
+  mutate(Abundance_plot = pmax(Abundance, 1e-8)) |>
+  group_by(case_id, Species_ID) |>
+  group_modify(~ thin_group(.x)) |>
+  ungroup()
+
+resources_plot <- resources |>
+  group_by(case_id, Resource_ID) |>
+  group_modify(~ thin_group(.x)) |>
+  ungroup()
+
+total_biomass_data <- dynamics_plot |>
+  group_by(case_id, time) |>
+  summarise(total_biomass = sum(Abundance), .groups = "drop") |>
+  mutate(total_biomass_plot = pmax(total_biomass, 1e-8)) |>
+  left_join(case_lookup, by = "case_id")
+
+total_biomass_plot <- total_biomass_data
+
+stability_quantiles <- quantile(
+  analysis_data$community_stability,
+  probs = c(0, 0.5, 1),
+  na.rm = TRUE
+)
+
+stability_example_cases <- bind_rows(
+  analysis_data |>
+    mutate(distance_to_target = abs(community_stability - stability_quantiles[[1]])) |>
+    arrange(distance_to_target) |>
+    slice(1) |>
+    mutate(stability_class = "Low stability"),
+  analysis_data |>
+    mutate(distance_to_target = abs(community_stability - stability_quantiles[[2]])) |>
+    arrange(distance_to_target) |>
+    slice(1) |>
+    mutate(stability_class = "Intermediate stability"),
+  analysis_data |>
+    mutate(distance_to_target = abs(community_stability - stability_quantiles[[3]])) |>
+    arrange(distance_to_target) |>
+    slice(1) |>
+    mutate(stability_class = "High stability")
+) |>
+  mutate(
+    stability_class = factor(
+      stability_class,
+      levels = c("High stability", "Intermediate stability", "Low stability")
+    ),
+    stability_label = paste0(
+      stability_class,
+      " (", case_id,
+      "; stability = ", format_num(community_stability, 2), ")"
+    )
+  ) |>
+  arrange(stability_class)
+
+stability_example_case_ids <- stability_example_cases$case_id
+stability_example_env_series_ids <- unique(stability_example_cases$env_series_id)
+
+stability_dynamics <- read_sqlite_cases(
+  db_path = file.path(cr_folder, "dynamics.db"),
+  table_name = "dynamics",
+  case_ids = stability_example_case_ids
+)
+
+stability_temperatures_con <- dbConnect(SQLite(), file.path(cr_folder, "temperatures.db"))
+stability_temperatures <- dbGetQuery(
+  stability_temperatures_con,
+  paste0(
+    "SELECT * FROM temperatures WHERE env_series_id IN (",
+    sql_strings(stability_temperatures_con, stability_example_env_series_ids),
+    ")"
+  )
+) |>
+  as_tibble()
+dbDisconnect(stability_temperatures_con)
+
+stability_example_lookup <- stability_example_cases |>
+  transmute(
+    case_id,
+    env_series_id,
+    stability_class,
+    stability_label,
+    community_stability,
+    CV_totab,
+    CV_community_viability_binary_info,
+    CV_community_perf_info,
+    richness,
+    resource_specialization,
+    u_opt_mean,
+    u_opt_range,
+    sd_u_mean
+  )
+
+stability_dynamics_plot <- stability_dynamics |>
+  mutate(Abundance_plot = pmax(Abundance, 1e-8)) |>
+  group_by(case_id, Species_ID) |>
+  group_modify(~ thin_group(.x)) |>
+  ungroup() |>
+  left_join(stability_example_lookup, by = "case_id")
+
+stability_total_biomass_plot <- stability_dynamics_plot |>
+  group_by(case_id, time) |>
+  summarise(total_biomass = sum(Abundance), .groups = "drop") |>
+  mutate(total_biomass_plot = pmax(total_biomass, 1e-8)) |>
+  left_join(stability_example_lookup, by = "case_id")
+
+stability_temperature_plot <- stability_temperatures |>
+  left_join(
+    stability_example_lookup |>
+      select(case_id, env_series_id, stability_class, stability_label),
+    by = "env_series_id"
+  ) |>
+  group_by(case_id) |>
+  group_modify(~ thin_group(.x, max_points = 2500)) |>
+  ungroup()
+
+lv_temperatures_con <- dbConnect(SQLite(), file.path(lv_folder, "temperatures.db"))
+lv_temperatures <- dbReadTable(lv_temperatures_con, "temperatures") |>
+  as_tibble()
+dbDisconnect(lv_temperatures_con)
+
+lv_temperature_lookup <- split(lv_temperatures$temperature, lv_temperatures$env_series_id)
+
+lv_measures <- readRDS(file.path(lv_folder, "community_measures.RDS")) |>
+  as_tibble() |>
+  mutate(
+    CV_community_viability_binary_info = vapply(
+      seq_len(n()),
+      function(row_index) {
+        calculate_lv_binary_cpc_cv(
+          community_object[[row_index]],
+          lv_temperature_lookup[[env_series_id[[row_index]]]]
+        )
+      },
+      numeric(1)
+    )
+  )
+
+model_link_plot_data <- bind_rows(
+  lv_measures |>
+    transmute(
+      model_type = "Lotka-Volterra",
+      link_function = "Identity link",
+      CPC_CV = CV_community_perf_info,
+      community_stability = 1 / CV_totab
+    ),
+  lv_measures |>
+    transmute(
+      model_type = "Lotka-Volterra",
+      link_function = "Binary link",
+      CPC_CV = CV_community_viability_binary_info,
+      community_stability = 1 / CV_totab
+    ),
+  community_measures |>
+    transmute(
+      model_type = "Consumer-resource",
+      link_function = "Identity link",
+      CPC_CV = CV_community_perf_info,
+      community_stability = 1 / CV_totab
+    ),
+  community_measures |>
+    transmute(
+      model_type = "Consumer-resource",
+      link_function = "Binary link",
+      CPC_CV = CV_community_viability_binary_info,
+      community_stability = 1 / CV_totab
+    )
+) |>
+  filter(is.finite(CPC_CV), is.finite(community_stability))
+
+model_link_plot_summaries <- model_link_plot_data |>
+  group_by(model_type, link_function) |>
+  summarise(
+    n = n(),
+    cpc_cv_sd = stats::sd(CPC_CV),
+    r_squared = ifelse(
+      cpc_cv_sd > 0,
+      summary(lm(community_stability ~ CPC_CV))$r.squared,
+      NA_real_
+    ),
+    .groups = "drop"
+  ) |>
+  mutate(
+    panel_label = ifelse(
+      is.na(r_squared),
+      paste0("n = ", n, "\nCPC CV constant"),
+      paste0("n = ", n, "\nR^2 = ", formatC(r_squared, format = "f", digits = 2))
+    )
+  )
+
+plot_model_link_case <- function(data, model, link) {
+  plot_data_one <- data |>
+    filter(model_type == model, link_function == link)
+  plot_summary_one <- model_link_plot_summaries |>
+    filter(model_type == model, link_function == link)
+
+  plot <- ggplot(plot_data_one, aes(CPC_CV, community_stability)) +
+    geom_point(alpha = 0.65, size = 1.7, colour = "#2f5d7c") +
+    geom_text(
+      data = plot_summary_one,
+      aes(x = Inf, y = Inf, label = panel_label),
+      inherit.aes = FALSE,
+      hjust = 1.08,
+      vjust = 1.15,
+      size = 3.4
+    ) +
+    labs(
+      title = paste(model, "-", link),
+      x = "CV of CPC",
+      y = "Community stability, 1 / CV(total abundance)"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+
+  if (isTRUE(plot_summary_one$cpc_cv_sd > 0)) {
+    plot <- plot +
+      geom_smooth(method = "lm", se = TRUE, colour = "black", linewidth = 0.75)
+  }
+
+  plot
+}
+
+plot_model_link_case_filtered <- function(data, model, link, max_cpc_cv) {
+  plot_data_one <- data |>
+    filter(
+      model_type == model,
+      link_function == link,
+      CPC_CV <= max_cpc_cv
+    )
+
+  plot_summary_one <- plot_data_one |>
+    summarise(
+      n = n(),
+      cpc_cv_sd = stats::sd(CPC_CV),
+      r_squared = ifelse(
+        cpc_cv_sd > 0,
+        summary(lm(community_stability ~ CPC_CV))$r.squared,
+        NA_real_
+      ),
+      .groups = "drop"
+    ) |>
+    mutate(
+      panel_label = ifelse(
+        is.na(r_squared),
+        paste0("n = ", n, "\nCPC CV constant"),
+        paste0("n = ", n, "\nR^2 = ", formatC(r_squared, format = "f", digits = 2))
+      )
+    )
+
+  plot <- ggplot(plot_data_one, aes(CPC_CV, community_stability)) +
+    geom_point(alpha = 0.65, size = 1.7, colour = "#2f5d7c") +
+    geom_text(
+      data = plot_summary_one,
+      aes(x = Inf, y = Inf, label = panel_label),
+      inherit.aes = FALSE,
+      hjust = 1.08,
+      vjust = 1.15,
+      size = 3.4
+    ) +
+    labs(
+      title = paste0(model, " - ", link, " (CV CPC <= ", max_cpc_cv, ")"),
+      x = "CV of CPC",
+      y = "Community stability, 1 / CV(total abundance)"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(panel.grid.minor = element_blank())
+
+  if (isTRUE(plot_summary_one$cpc_cv_sd > 0)) {
+    plot <- plot +
+      geom_smooth(method = "lm", se = TRUE, colour = "black", linewidth = 0.75)
+  }
+
+  plot
+}
+```
+
+## Introduction
+
+Community performance curves (CPCs) are intended to summarize how the expected performance of a whole community varies across temperature. A common way to construct a CPC is to sum the temperature-dependent performance curves of all species. That approach is natural when species performance is closely and approximately linearly related to the community variable whose stability is being predicted, such as total abundance or total biomass.
+
+The consumer-resource model considered here creates a more mechanistic test of this idea. It extends the mechanistic resource competition model used by Lehman and Tilman (2000) and Gonzalez and de Feo (2007), in which consumers compete indirectly through explicit resource depletion and environmental variation modifies species' resource-dependent performance. In such models, species grow through resource uptake, and environmental variation changes species performance.
+
+We generalize this framework from one resource to a consumer-by-resource uptake matrix, as in recent microbial consumer-resource models. Duan et al. (2025), for example, use a microbial consumer-resource model in which an uptake matrix encodes species' resource-use profiles and temperature affects resource uptake. Our model uses the same broad matrix-based idea, but with a deliberately simplified uptake structure to isolate resource-mediated competition. Each species allocates a fraction \(1-\lambda\) of uptake to a common shared resource and a fraction \(\lambda\) to a species-specific private resource, creating a controlled gradient from strong resource overlap to weak resource overlap while holding total uptake weight constant.
+
+This extension matters because species abundance is not expected to be a linear function of raw growth rate in a consumer-resource system. A species with negative growth declines to very low abundance. A species with positive growth can increase, but its equilibrium abundance is then determined by resource supply, mortality, half-saturation constants, conversion efficiency, and competition with other consumers. Thus, for predicting stability of total abundance, raw growth-rate curves may be on the wrong scale. A better CPC may first transform species performance into an abundance-relevant quantity.
+
+The central proposal is therefore simple: before summing species performance curves, transform each species curve onto the scale of the community variable whose stability is being predicted. For total abundance in the consumer-resource model, the most useful first-order transformation is binary viability: whether species growth is positive or not. The resulting community viability curve counts the number of viable species through time, and its CV measures how variable that viable species pool is under the temperature sequence.
+
+## Methods
+
+### Mechanistic Consumer-Resource Model
+
+For a community with \(S\) consumer species and \(R\) resources, consumer abundance or biomass is denoted \(N_i(t)\), and resource concentration is denoted \(R_j(t)\). Consumer dynamics follow:
+
+$$
+\frac{dN_i}{dt}
+=
+N_i
+\left[
+e_i \sum_{j=1}^{R} U_{ij}(T, R_j) - d_i
+\right]
++ I_i ,
+$$
+
+where \(e_i\) is the conversion efficiency of consumed resource into consumer growth, \(d_i\) is the consumer death rate, and \(I_i\) is a small immigration term. Resource dynamics follow:
+
+$$
+\frac{dR_j}{dt}
+=
+\rho_j(K_{R,j} - R_j)
+-
+\sum_{i=1}^{S} N_i U_{ij}(T, R_j),
+$$
+
+where \(\rho_j\) is the resource renewal rate and \(K_{R,j}\) is the resource supply concentration. The chemostat-like renewal term keeps resources bounded in the absence of consumers.
+
+Resource uptake by consumer \(i\) on resource \(j\) is:
+
+$$
+U_{ij}(T, R_j)
+=
+W_{ij}
+u_{ij}(T)
+\frac{R_j}{h_{ij} + R_j},
+$$
+
+where \(W_{ij}\) is the resource-use weight, \(h_{ij}\) is the half-saturation constant, and \(u_{ij}(T)\) is the temperature-dependent maximum uptake rate. Temperature dependence is represented with a Gaussian thermal performance curve:
+
+$$
+u_{ij}(T)
+=
+a_{u,ij}
+\exp
+\left[
+-\frac{1}{2}
+\left(
+\frac{T - u_{\mathrm{opt},ij}}{\sigma_{u,ij}}
+\right)^2
+\right],
+$$
+
+where \(a_{u,ij}\) is the maximum uptake rate, \(u_{\mathrm{opt},ij}\) is the thermal optimum, and \(\sigma_{u,ij}\) controls thermal breadth.
+
+The simulations use a shared-to-private resource-use structure. One resource is shared by all consumers and each consumer also has one private resource. A specialization parameter \(\lambda\) controls the resource-use weights:
+
+$$
+W_{i,\mathrm{shared}} = 1 - \lambda,
+\qquad
+W_{i,\mathrm{private}} = \lambda .
+$$
+
+Thus, \(\lambda = 0\) gives complete overlap in resource use, while \(\lambda = 1\) gives one private resource per consumer. Intermediate values split uptake between the shared and private resources while keeping total resource-use weight constant.
+
+### Species Performance And CPC Construction
+
+For the consumer-resource model, species performance was calculated directly from the mechanistic uptake equation. Expected net per-capita growth at temperature \(T\), evaluated at resource supply concentrations, was:
+
+$$
+g_i(T)
+=
+e_i
+\sum_{j=1}^{R}
+W_{ij}
+u_{ij}(T)
+\frac{K_{R,j}}{h_{ij} + K_{R,j}}
+-
+d_i .
+$$
+
+The general CPC construction is:
+
+$$
+P_i(T) = \text{raw performance of species } i \text{ at temperature } T
+$$
+
+$$
+A_i(T) = f_{\text{model}, y}(P_i(T))
+$$
+
+$$
+CPC_y(T) = \sum_i A_i(T),
+$$
+
+where \(y\) is the community variable whose stability is being predicted, and \(f_{\text{model}, y}\) maps raw species performance to expected contribution to that variable.
+
+For the Lotka-Volterra model used for comparison, raw temperature-dependent performance is closely linked to expected abundance by the model structure. The abundance-scale link can therefore be treated as approximately identity:
+
+$$
+f_{\text{LV}, abundance}(P_i(T)) \approx P_i(T).
+$$
+
+For the consumer-resource model, raw growth is not linearly related to abundance. Instead, positive growth indicates that a species can persist, while realized abundance is set by resource-mediated dynamics. The abundance-scale link is therefore closer to binary viability:
+
+$$
+f_{\text{CR}, abundance}(P_i(T)) =
+\begin{cases}
+1, & P_i(T) > 0 \\
+0, & P_i(T) \le 0 .
+\end{cases}
+$$
+
+The consumer-resource viability CPC is:
+
+$$
+CPC_{\text{CR viability}}(T)
+=
+\sum_i I(P_i(T) > 0).
+$$
+
+In words, this CPC is the number of viable species through time.
+
+### Factorial Experiment
+
+The factorial experiment contains `r experiment_summary$cases` valid cases. It uses `r experiment_summary$community_replicates` community replicates, `r experiment_summary$temperature_replicates` temperature replicates, and `r experiment_summary$resource_specialization_levels` resource-specialization levels ranging from `r format_num(experiment_summary$min_specialization, 2)` to `r format_num(experiment_summary$max_specialization, 2)`.
+
+The design varies four main factors:
+
+```{r}
+tibble(
+  Factor = c(
+    "Consumer richness",
+    "Resource specialization",
+    "Mean thermal optimum",
+    "Range of thermal optima",
+    "Mean thermal breadth"
+  ),
+  Values = c(
+    "4, 8, 12",
+    "0, 0.25, 0.5, 0.75, 1",
+    "16, 20, 24",
+    "0, 2, 4",
+    "1, 2, 3"
+  )
+) |>
+  kable()
+```
+
+Each case contains one shared resource plus one private resource per consumer, Monod resource uptake, Gaussian temperature dependence of maximum uptake, chemostat-like resource renewal, consumer immigration, and a fluctuating temperature time series. Dynamics were simulated with the `lsoda` ODE solver and saved every 10 time steps. Community stability was measured as \(1 / CV_{total abundance}\), so larger values indicate less temporal variation in total consumer abundance.
+
+## Results
+
+### Example Simulation Runs
+
+The following example runs share the same environment and thermal trait settings but differ in resource specialization. They illustrate how changing resource-use overlap changes the resource utilisation matrix, species dynamics, and total community biomass dynamics.
+
+```{r}
+case_lookup |>
+  select(
+    case_id,
+    lambda,
+    env_series_id,
+    u_opt_mean,
+    u_opt_range,
+    sd_u_mean,
+    temperature_replicate
+  ) |>
+  kable()
+```
+
+```{r fig.width=8, fig.height=4}
+temperatures |>
+  distinct(env_series_id, time, temperature) |>
+  ggplot(aes(time, temperature)) +
+  geom_line(linewidth = 0.4, colour = "black") +
+  labs(
+    x = "Time",
+    y = "Temperature"
+  ) +
+  theme_bw()
+```
+
+```{r fig.width=8, fig.height=4.5}
+total_biomass_plot |>
+  mutate(lambda = factor(lambda, levels = lambda_levels)) |>
+  ggplot(aes(time, total_biomass_plot, colour = lambda)) +
+  geom_line(linewidth = 0.55) +
+  scale_y_log10() +
+  scale_colour_manual(values = lambda_colours) +
+  labs(
+    x = "Time",
+    y = "Total community biomass, log10 scale",
+    colour = "Resource specialization"
+  ) +
+  theme_bw()
+```
+
+```{r results='asis', fig.width=8, fig.height=4.6}
+for (row_index in seq_len(nrow(selected_cases))) {
+  case <- selected_cases[row_index, ]
+  community <- case$community_object[[1]]
+  case_id <- case$case_id
+  lambda <- case$resource_specialization
+  env_series_id <- case$env_series_id
+
+  case_temperatures <- temperatures |>
+    filter(env_series_id == !!env_series_id)
+
+  parameter_table <- species_parameter_table(community)
+  temperature_grid <- seq(
+    min(case_temperatures$temperature, parameter_table$u_opt) - 2,
+    max(case_temperatures$temperature, parameter_table$u_opt) + 2,
+    length.out = 300
+  )
+  net_growth_curves <- net_growth_at_supply(community, temperature_grid)
+
+  case_dynamics <- dynamics_plot |>
+    filter(case_id == !!case_id)
+
+  case_resources <- resources_plot |>
+    filter(case_id == !!case_id)
+
+  case_total_biomass <- total_biomass_plot |>
+    filter(case_id == !!case_id)
+
+  cat("\n\n#### Resource Specialization ", lambda, " (", case_id, ")\n\n", sep = "")
+
+  cat("##### Resource Utilisation Pattern\n\n")
+  print(
+    ggplot(resource_matrix_long(community), aes(Resource_ID, Species_ID, fill = use_weight)) +
+      geom_tile(colour = "white", linewidth = 0.25) +
+      scale_fill_gradient(low = "white", high = "#2F5D7C", limits = c(0, 1)) +
+      labs(
+        x = "Resource",
+        y = "Species",
+        fill = "Use weight"
+      ) +
+      coord_equal() +
+      theme_bw() +
+      theme(
+        panel.grid = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+  )
+
+  cat("\n\n##### Species Performance Curves\n\n")
+  print(
+    ggplot(net_growth_curves, aes(temperature, net_growth_at_resource_supply, colour = Species_ID)) +
+      annotate(
+        "rect",
+        xmin = min(case_temperatures$temperature),
+        xmax = max(case_temperatures$temperature),
+        ymin = -Inf,
+        ymax = Inf,
+        alpha = 0.08,
+        fill = "grey35"
+      ) +
+      geom_hline(yintercept = 0, linetype = "dashed", colour = "grey45") +
+      geom_line(linewidth = 0.75) +
+      scale_colour_manual(values = species_colours) +
+      labs(
+        x = "Temperature",
+        y = "Net growth at resource supply",
+        colour = "Species"
+      ) +
+      theme_bw()
+  )
+
+  cat("\n\n##### Species Dynamics\n\n")
+  print(
+    ggplot(case_dynamics, aes(time, Abundance_plot, colour = Species_ID)) +
+      geom_line(linewidth = 0.45) +
+      scale_y_log10() +
+      scale_colour_manual(values = species_colours) +
+      labs(
+        x = "Time",
+        y = "Species abundance, log10 scale",
+        colour = "Species"
+      ) +
+      theme_bw()
+  )
+
+  cat("\n\n##### Resource Dynamics\n\n")
+  print(
+    ggplot(case_resources, aes(time, Resource, colour = Resource_ID)) +
+      geom_line(linewidth = 0.45) +
+      scale_colour_manual(values = resource_colours) +
+      labs(
+        x = "Time",
+        y = "Resource concentration",
+        colour = "Resource"
+      ) +
+      theme_bw()
+  )
+
+  cat("\n\n##### Community Biomass Dynamics\n\n")
+  print(
+    ggplot(case_total_biomass, aes(time, total_biomass_plot)) +
+      geom_line(linewidth = 0.55, colour = "black") +
+      scale_y_log10() +
+      labs(
+        x = "Time",
+        y = "Total community biomass, log10 scale"
+      ) +
+      theme_bw()
+  )
+}
+```
+
+### Stability Example Communities
+
+The next examples show three individual simulation cases selected from the factorial experiment: one with high stability, one with intermediate stability, and one with low stability. Stability is measured as \(1 / CV_{total abundance}\). These examples are useful because they show how the same summary statistics appear in the underlying curves and time series.
+
+```{r}
+stability_example_lookup |>
+  arrange(stability_class) |>
+  transmute(
+    `Stability class` = stability_class,
+    `Case ID` = case_id,
+    Richness = richness,
+    `Resource specialization` = resource_specialization,
+    `Community stability` = format_num(community_stability, 3),
+    `CV total abundance` = format_num(CV_totab, 3),
+    `CV binary viability CPC` = format_num(CV_community_viability_binary_info, 3),
+    `CV growth-rate CPC` = format_num(CV_community_perf_info, 3),
+    `Mean thermal optimum` = u_opt_mean,
+    `Range thermal optimum` = u_opt_range,
+    `Mean thermal breadth` = sd_u_mean
+  ) |>
+  kable()
+```
+
+```{r results='asis', fig.width=8, fig.height=4.6}
+for (row_index in seq_len(nrow(stability_example_cases))) {
+  case <- stability_example_cases[row_index, ]
+  community <- case$community_object[[1]]
+  case_id <- case$case_id
+  label <- as.character(case$stability_label)
+  stability_class <- as.character(case$stability_class)
+  env_series_id <- case$env_series_id
+
+  species_levels <- paste0("Spp", seq_len(community$S))
+  case_species_colours <- setNames(
+    grDevices::hcl.colors(length(species_levels), palette = "Dark 3"),
+    species_levels
+  )
+
+  case_temperatures <- stability_temperatures |>
+    filter(env_series_id == !!env_series_id)
+
+  case_temperature_plot <- stability_temperature_plot |>
+    filter(case_id == !!case_id)
+
+  parameter_table <- species_parameter_table(community)
+  temperature_grid <- seq(
+    min(case_temperatures$temperature, parameter_table$u_opt) - 2,
+    max(case_temperatures$temperature, parameter_table$u_opt) + 2,
+    length.out = 300
+  )
+  net_growth_curves <- net_growth_at_supply(community, temperature_grid)
+  cpc_curves <- community_cpc_curves(net_growth_curves)
+
+  case_dynamics <- stability_dynamics_plot |>
+    filter(case_id == !!case_id)
+
+  case_total_biomass <- stability_total_biomass_plot |>
+    filter(case_id == !!case_id)
+
+  cat("\n\n#### ", stability_class, "\n\n", sep = "")
+  cat(
+    "Case `", case_id, "` has stability ",
+    format_num(case$community_stability, 3),
+    " and CV of total abundance ",
+    format_num(case$CV_totab, 3),
+    ".\n\n",
+    sep = ""
+  )
+
+  cat("##### Species Performance Curves\n\n")
+  print(
+    ggplot(net_growth_curves, aes(temperature, net_growth_at_resource_supply, colour = Species_ID)) +
+      annotate(
+        "rect",
+        xmin = min(case_temperatures$temperature),
+        xmax = max(case_temperatures$temperature),
+        ymin = -Inf,
+        ymax = Inf,
+        alpha = 0.08,
+        fill = "grey35"
+      ) +
+      geom_hline(yintercept = 0, linetype = "dashed", colour = "grey45") +
+      geom_line(linewidth = 0.75) +
+      scale_colour_manual(values = case_species_colours) +
+      labs(
+        x = "Temperature",
+        y = "Net growth at resource supply",
+        colour = "Species"
+      ) +
+      theme_bw()
+  )
+
+  cat("\n\n##### Community Performance Curves\n\n")
+  print(
+    ggplot(cpc_curves, aes(temperature, CPC_value)) +
+      annotate(
+        "rect",
+        xmin = min(case_temperatures$temperature),
+        xmax = max(case_temperatures$temperature),
+        ymin = -Inf,
+        ymax = Inf,
+        alpha = 0.08,
+        fill = "grey35"
+      ) +
+      geom_line(linewidth = 0.8, colour = "#2f5d7c") +
+      facet_wrap(~ CPC_type, scales = "free_y", ncol = 1) +
+      labs(
+        x = "Temperature",
+        y = "CPC value"
+      ) +
+      theme_bw() +
+      theme(panel.grid.minor = element_blank())
+  )
+
+  cat("\n\n##### Temperature Dynamics\n\n")
+  print(
+    ggplot(case_temperature_plot, aes(time, temperature)) +
+      geom_line(linewidth = 0.4, colour = "black") +
+      labs(
+        x = "Time",
+        y = "Temperature"
+      ) +
+      theme_bw()
+  )
+
+  cat("\n\n##### Population Dynamics\n\n")
+  print(
+    ggplot(case_dynamics, aes(time, Abundance_plot, colour = Species_ID)) +
+      geom_line(linewidth = 0.45) +
+      scale_y_log10() +
+      scale_colour_manual(values = case_species_colours) +
+      labs(
+        x = "Time",
+        y = "Species abundance, log10 scale",
+        colour = "Species"
+      ) +
+      theme_bw()
+  )
+
+  cat("\n\n##### Total Community Biomass Dynamics\n\n")
+  print(
+    ggplot(case_total_biomass, aes(time, total_biomass_plot)) +
+      geom_line(linewidth = 0.55, colour = "black") +
+      scale_y_log10() +
+      labs(
+        x = "Time",
+        y = "Total community biomass, log10 scale"
+      ) +
+      theme_bw()
+  )
+}
+```
+
+### Link Function Comparison
+
+The CPC should be a sum of species' expected contributions to the focal community variable, not necessarily a sum of raw species performance curves. The four plots below compare model-link combinations using actual simulation results. Stability is measured as \(1 / CV_{total abundance}\), and the x-axis is the CV of the CPC constructed under each link function.
+
+```{r fig.width=7, fig.height=4.6}
+plot_model_link_case(model_link_plot_data, "Lotka-Volterra", "Identity link")
+```
+
+```{r fig.width=7, fig.height=4.6}
+plot_model_link_case(model_link_plot_data, "Lotka-Volterra", "Binary link")
+```
+
+In this Lotka-Volterra simulation set, the binary-link CPC is constant. The death parameter is zero, so the Gaussian intrinsic growth curve is positive for every species across the sampled temperature series. After thresholding at zero, each species is always viable, and the summed binary CPC has no temporal variation.
+
+```{r fig.width=7, fig.height=4.6}
+plot_model_link_case(model_link_plot_data, "Consumer-resource", "Identity link")
+```
+
+The identity-link CPC in the consumer-resource model has a few very large CV values. With values above 50 excluded:
+
+```{r fig.width=7, fig.height=4.6}
+plot_model_link_case_filtered(model_link_plot_data, "Consumer-resource", "Identity link", 50)
+```
+
+```{r fig.width=7, fig.height=4.6}
+plot_model_link_case(model_link_plot_data, "Consumer-resource", "Binary link")
+```
+
+The expected pattern is visible: the identity link is the appropriate scale transformation for the Lotka-Volterra model, while the binary viability link is more informative for the consumer-resource model. The off-diagonal cases act as controls, showing what happens when the CPC is constructed on a scale that is less closely tied to total abundance.
+
+### Viability CPC Predicts Stability
+
+In the consumer-resource experiment, variability in the informed binary viability CPC is a strong predictor of community stability. Across `r nrow(analysis_data)` valid cases, the single-predictor regression
+
+$$
+stability = \alpha + \beta \, CV_{viability CPC}
+$$
+
+explains **`r format_num(binary_r2 * 100, 1)`%** of the variation in community stability. The slope is **`r format_num(binary_slope)`**, with **p `r format_p(binary_p)`**.
+
+```{r fig.width=7.5, fig.height=5}
+ggplot(
+  analysis_data,
+  aes(CV_community_viability_binary_info, community_stability)
+) +
+  geom_point(aes(colour = resource_specialization), alpha = 0.8, size = 2.1) +
+  geom_smooth(method = "lm", se = TRUE, colour = "black", linewidth = 0.8) +
+  scale_colour_viridis_c(option = "C", end = 0.9) +
+  labs(
+    x = "CV of informed binary viability CPC",
+    y = "Community stability, 1 / CV(total abundance)",
+    colour = "Resource\nspecialization"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(panel.grid.minor = element_blank())
+```
+
+The relationship is negative: communities are most stable when the summed binary viability curve varies little across temperature. In other words, the more constant the number of viable species is through the temperature time series, the lower the temporal CV of total community abundance tends to be.
+
+### Comparison With Other CPC Measures
+
+```{r}
+predictor_comparison |>
+  transmute(
+    Predictor = predictor_label,
+    `Correlation with stability` = format_num(r),
+    `R-squared` = format_num(r_squared),
+    Slope = format_num(slope),
+    `p-value` = format_p(p_value)
+  ) |>
+  kable(align = c("l", "r", "r", "r", "r"))
+```
+
+```{r fig.width=8.5, fig.height=5}
+cpc_predictor_plot_data <- analysis_data |>
+  select(
+    community_stability,
+    `Viability CPC CV, informed binary` = CV_community_viability_binary_info,
+    `Viability CPC CV, informed soft` = CV_community_viability_soft_info,
+    `Growth-rate CPC CV, informed` = CV_community_perf_info,
+    `Growth-rate CPC CV, naive` = CV_community_perf_naive
+  ) |>
+  pivot_longer(
+    cols = -community_stability,
+    names_to = "predictor",
+    values_to = "predictor_value"
+  )
+
+ggplot(cpc_predictor_plot_data, aes(predictor_value, community_stability)) +
+  geom_point(alpha = 0.65, size = 1.7, colour = "#2f5d7c") +
+  geom_smooth(method = "lm", se = FALSE, colour = "black", linewidth = 0.65) +
+  facet_wrap(~ predictor, scales = "free_x") +
+  labs(
+    x = "Predictor value",
+    y = "Community stability, 1 / CV(total abundance)"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    panel.grid.minor = element_blank(),
+    strip.background = element_rect(fill = "grey92", colour = "grey60")
+  )
+```
+
+The viability-based CPC measures are much stronger predictors than the original growth-rate CPC CVs in this experiment. The informed binary version performs very well, and the informed soft-viability version is slightly stronger in this run.
+
+### Resource Competition Also Matters
+
+The informed binary viability CPC remains important after accounting for the main experimental settings used in the factorial run. The model
+
+$$
+stability =
+\alpha +
+\beta_1 CV_{viability CPC} +
+\beta_2 resource\ specialization +
+\beta_3 \bar{u}_{opt} +
+\beta_4 range(u_{opt}) +
+\beta_5 \bar{\sigma}_u
+$$
+
+explains **`r format_num(adjusted_r2 * 100, 1)`%** of the variation in community stability. The viability CPC term remains significant with **p `r format_p(adjusted_binary_p)`**.
+
+Resource specialization controls how strongly consumers overlap in resource use, and therefore how strongly they compete through shared resources. After accounting for viability-CPC variability and thermal-curve parameters, resource specialization still has a significant association with stability: slope **`r format_num(resource_specialization_slope)`**, **p `r format_p(resource_specialization_p)`**. Adding resource specialization and the thermal-curve parameters increases explained variation from **`r format_num(binary_r2 * 100, 1)`%** to **`r format_num(adjusted_r2 * 100, 1)`%**, a gain of **`r format_num(adjusted_r2_gain * 100, 1)` percentage points**.
+
+```{r}
+coef_table <- as.data.frame(coef(adjusted_summary)) |>
+  rownames_to_column("term") |>
+  as_tibble() |>
+  transmute(
+    Term = recode(
+      term,
+      `(Intercept)` = "Intercept",
+      CV_community_viability_binary_info = "Viability CPC CV, informed binary",
+      resource_specialization = "Resource specialization",
+      u_opt_mean = "Mean thermal optimum",
+      u_opt_range = "Range of thermal optima",
+      sd_u_mean = "Mean thermal breadth"
+    ),
+    Estimate = format_num(Estimate),
+    `Std. error` = format_num(`Std. Error`),
+    `t-value` = format_num(`t value`),
+    `p-value` = format_p(`Pr(>|t|)`)
+  )
+
+kable(coef_table, align = c("l", "r", "r", "r", "r"))
+```
+
+## Discussion
+
+The consumer-resource model shows why CPC construction needs to respect the relationship between species performance and the community variable of interest. In the Lotka-Volterra case, the model links temperature-dependent performance to abundance in a way that makes the identity link reasonable. In the consumer-resource case, that link is not identity. A species with positive growth can persist, but its abundance is then set by resource supply, mortality, resource limitation, and competition. A species with negative growth falls to very low abundance. This makes a binary viability transform biologically meaningful when the target response is stability of total abundance.
+
+The factorial experiment supports this interpretation. The original growth-rate CPC CV is weakly related to community stability in the consumer-resource model, whereas the informed binary viability CPC CV explains `r format_num(binary_r2 * 100, 1)`% of the variation in stability on its own. Stability is highest when the number of viable species remains relatively constant through the temperature sequence. This suggests that community stability in these simulations is associated less with constancy in summed raw growth rates and more with constancy in the viable species pool.
+
+The results also show that species interactions remain important. Resource specialization has a significant association with stability after accounting for viability-CPC variability and thermal-curve parameters. The viability CPC captures a strong first-order thermal signal, but total abundance stability is also shaped by how consumers interact through shared resources.
+
+The practical implication is that CPCs should be defined as model- and response-specific summaries:
+
+$$
+CPC_y(T) = \sum_i f_{\text{model}, y}(P_i(T)).
+$$
+
+For total abundance in the Lotka-Volterra model, the link from species performance to abundance contribution can be close to identity. For total abundance in the consumer-resource model, the link is better represented by viability, at least as a first approximation. This framing keeps the CPC concept general while allowing the performance-to-abundance link to differ among model classes.
+
+These results should still be treated as evidence from this factorial experiment, not as a final general conclusion. The next checks should test whether the viability-CPC result holds across additional community replicates, richer resource-use structures, and broader environmental sequences.
+
+## References
+
+Duan, Q., Harcombe, W., Savage, V., Mustri, M., Smith, T. P., and Pawar, S. 2025. A general framework for predicting the temperature-dependence of microbial interactions. bioRxiv preprint.
+
+Gonzalez, A. and de Feo, O. 2007. Environmental variability modulates the insurance effects of diversity in non-equilibrium communities.
+
+Lehman, C. L. and Tilman, D. 2000. Biodiversity, stability, and productivity in competitive communities. *The American Naturalist* 156: 534-552.

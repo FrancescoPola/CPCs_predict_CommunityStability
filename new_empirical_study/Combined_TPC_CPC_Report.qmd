@@ -1,0 +1,1891 @@
+---
+title: "Supplementary Information 3 - Empirical study"
+authors: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Owen L. Petchey"
+format:
+  html:
+    toc: true
+    toc-location: left
+    number-sections: true
+editor: visual
+echo: false
+embed-resources: true
+crossref:
+  fig-title: Figure S
+  tbl-title: Table S
+  fig-prefix: Figure S
+  tbl-prefix: Table S
+  custom:
+    - kind: float
+      key: suppfig
+      latex-env: suppfig
+      reference-prefix: Figure S
+      caption-prefix: Figure S
+      space-before-numbering: false
+
+    - kind: float
+      key: supptbl
+      latex-env: supptbl
+      reference-prefix: Table S
+      caption-prefix: Table S
+      space-before-numbering: false
+---
+
+```{r}
+#| include: false
+
+rm(list = ls())
+library(ggplot2)
+library(tidyverse)
+library(conflicted)
+library(mgcv)
+library(readr)
+library(patchwork)
+library(RColorBrewer)
+library(lavaan)
+library(ggfortify)
+library(ggrepel)
+library(readxl)
+
+conflicted::conflicts_prefer(dplyr::filter)
+```
+
+```{r}
+#| include: false
+#| label: load-data-sets
+
+# Load raw data sets
+ts_df <- read.csv("~/Documents/GitHub/CPCs_predict_CommunityStability/new_empirical_study/data/combined_timeseries_df.csv")
+
+TPC_timeseries <- read.csv("~/Documents/GitHub/CPCs_predict_CommunityStability/new_empirical_study/data/TPC_timeseries_df.csv")
+
+ts_df_raw <- ts_df
+TPC_timeseries_raw <- TPC_timeseries
+```
+
+```{r}
+#| include: false
+#| label: TPC Experiment analysis
+
+plot_ts_dens<-ggplot(
+  data = TPC_timeseries,
+  aes(x = day, y = mean.dens.ml, colour = temperature)
+) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE) +
+  facet_grid(species ~ temperature, scales = "free") +
+  scale_colour_viridis_d(option = "magma", end = 0.85)
+
+plot_ts_dens_log<-ggplot(
+  data = TPC_timeseries,
+  aes(x = day, y = log10(mean.dens.ml), colour = temperature)
+) +
+  geom_point() +
+  geom_smooth(method = "loess", se = FALSE) +
+  facet_grid(species ~ temperature, scales="free_y") +
+  scale_colour_viridis_d(option = "magma", end = 0.85)
+
+
+### Fit Thermal performance curves using gams
+
+
+TPC_dens_df <- TPC_timeseries |> 
+  filter(species != "S") |> 
+  mutate(
+    log_dens = log10(mean.dens.ml ),
+    max_days = case_when(
+      species == "C" ~ 3,
+      species == "D" & temperature %in% c("T24", "T27","T33") ~ 2,
+      species == "D" & temperature %in% c("T30") ~ 1,
+      species == "D" ~ 3,
+      species == "L" & temperature %in% c("T18","T21", "T24", "T27","T30","T33") ~ 2,
+      species == "L" ~ 3,
+      species == "P" & temperature %in% c("T24", "T27") ~ 2,
+      species == "P" & temperature %in% c("T15", "T18") ~ 6,
+      species == "P" & temperature %in% c("T30", "T33") ~ 2,
+      species == "P" ~ 3,
+      species == "T" & temperature %in% c("T30", "T33") ~ 1,
+      species == "T" & temperature == "T27" ~ 2,
+      species == "T" & temperature %in% c("T18", "T21", "T24") ~ 3,
+      species == "T" & temperature == "T15" ~ 4
+    )
+  ) |> 
+  filter(day <= max_days) |> 
+  group_by(species, temperature) |> 
+  summarise(
+    igr = coef(lm(log_dens ~ day))[2],
+    n_days = n_distinct(day),
+    .groups = "drop"
+  ) |> 
+  mutate(temperature = as.numeric(sub("T", "", temperature)))
+
+plot_dens_TPCs <- ggplot(
+  data = TPC_dens_df,
+  aes(x = temperature, y = igr, colour = species)
+) +
+  geom_point() +
+  geom_smooth(
+    method = "gam",
+    formula = y ~ s(x, k = 7),
+    se = FALSE
+  ) + 
+  scale_colour_viridis_d(option = "magma", end = 0.85) +
+  theme_bw()
+
+
+
+new_data <- data.frame(temperature = seq(15, 33, by= 0.02))
+
+nested_gams <- TPC_dens_df %>%
+  nest(cols =-species) %>%
+  mutate(
+    gams = map(cols, ~ gam(igr ~ s(temperature, k = 7),
+                           data = .x,
+                           method = "REML")),
+    predicted = map(gams, ~ predict(.x, newdata = new_data))
+  )
+
+tpc_gams_design <- setNames(nested_gams$gams, nested_gams$species)
+
+predicted <- nested_gams %>% unnest(predicted)
+rates <- cbind(new_data, predicted)
+rates <- rates %>%
+  relocate(species, temperature, predicted)
+
+TPC_predicted_dens<-rates %>% select(species, temperature, predicted)
+TPCs <- TPC_predicted_dens
+
+plot_dens_TPCs_predicted <- ggplot(
+  data = TPC_predicted_dens,
+  aes(x = temperature, y = predicted, colour = species)
+) +
+  geom_line(size = 2) +
+  scale_colour_viridis_d(option = "magma", end = 0.85) +
+  theme_bw()
+
+
+### Calculate Null Community performance variability (CV(CP))
+
+species_list <- c("L", "D", "P", "C", "T")
+richness_levels <- c(2, 3, 4)
+
+all_combinations <- map_dfr(richness_levels, function(r) {
+  combs <- combn(species_list, r, simplify = FALSE)
+  tibble(
+    richness = r,
+    composition_name = map_chr(combs, ~ paste(sort(.x), collapse = "")),
+    species = combs
+  )
+})
+
+list_combinations<- split(all_combinations,all_combinations$composition_name)
+
+list_CVperf<- lapply(list_combinations,function(r){
+  
+    community <- r[["species"]][[1]]
+
+  selected <- TPC_predicted_dens %>% 
+  dplyr::filter(species %in% community) 
+
+  sum_curve<-selected %>% 
+    group_by(temperature) %>% 
+    summarise(tot_igr=sum(predicted))
+  
+  pop_CV<-selected %>% 
+    group_by(species) %>% 
+    summarise(sd=sd(predicted),
+              mean=mean(predicted),
+              weight=mean/ mean(sum_curve$tot_igr),
+              CV=sd/mean) |> 
+    ungroup() |> 
+    summarise(pop_CVperf_null =sum(CV*weight),
+              synchrony=(sd(sum_curve$tot_igr))^2/(sum(sd))^2)
+  
+  CV_perf <- sd(sum_curve$tot_igr)/mean(sum_curve$tot_igr)
+  return(data.frame(CV_perf_null=CV_perf,
+                    pop_CVperf_null=pop_CV$pop_CVperf_null,
+                    synchrony_null=pop_CV$synchrony,
+                    composition=r["composition_name"],
+                    richness=r["richness"]))
+    
+})
+
+df_CVperf_naive_dens<-do.call("rbind", list_CVperf)
+
+plot_CV_perfs_naive <- ggplot(data = df_CVperf_naive_dens, 
+                        aes(x = as.factor(richness), y = CV_perf_null)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_point(aes(color = as.factor(richness)), 
+              width = 0.2, 
+              alpha = 0.6) +
+  geom_text_repel(aes(label = composition_name),
+                  size = 3,
+                  max.overlaps = 15,
+                  box.padding = 0.5,
+                  point.padding = 0.3,
+                  segment.color = 'grey50') +
+  theme_minimal() +
+  labs(x = "Species Richness", 
+       y = "CV of Performance",
+       title = "Community CV by Richness",
+       color = "Richness")
+
+### Create Temperature Time Series
+
+make_reddened_temperature <- function(seed) {
+  n <- 35
+  gamma <- 0.8
+  target_mean <- 22.5
+  target_sd <- 3.5
+  temp_step <- 0.1
+
+  set.seed(seed)
+  f <- seq(1, n / 2)
+  scales <- 1 / (f^(gamma / 2))
+  phases <- runif(length(f), 0, 2 * pi)
+  coeffs <- scales * exp(1i * phases)
+  full_coeffs <- c(0, coeffs, rev(Conj(coeffs[-length(coeffs)])))
+  raw_noise <- Re(fft(full_coeffs, inverse = TRUE))[1:n]
+  temperature_reddened <- as.vector(scale(raw_noise)) * target_sd + target_mean
+  temperature_reddened <- round(temperature_reddened / temp_step) * temp_step
+
+  data.frame(
+    time = 1:n,
+    temp = temperature_reddened
+  ) %>% 
+    drop_na()
+}
+
+df_red1 <- make_reddened_temperature(246)
+df_red2 <- make_reddened_temperature(113)
+df_red3 <- make_reddened_temperature(1356)
+df_red4 <- make_reddened_temperature(3356)
+
+df_temp <- tibble(
+  time = df_red1$time,
+  TS1 = df_red1$temp,
+  TS2 = df_red2$temp,
+  TS3 = df_red3$temp,
+  TS4 = df_red4$temp
+)
+
+temp_series <- df_temp |> pivot_longer(cols = starts_with("TS"), values_to = "temp" ,names_to="temp_series")
+
+### Calculate Actual Community performance variability (CV(CP)) 
+
+calculate_actual_cv <- function(T_norm) {
+  lapply(list_combinations,function(r){
+    
+      community <- r[["species"]][[1]]
+
+    selected <- TPC_predicted_dens %>% 
+    dplyr::filter(species %in% community, temperature %in% T_norm) 
+
+    sum_curve<-selected %>% 
+      group_by(temperature) %>% 
+      summarise(tot_igr=sum(predicted))
+    
+    pop_CV<-selected %>% 
+      group_by(species) %>% 
+      summarise(sd=sd(predicted),
+                mean=mean(predicted),
+                weight=mean/ mean(sum_curve$tot_igr),
+                CV=sd/mean) |> 
+      ungroup() |> 
+      summarise(pop_CVperf_actual =sum(CV*weight),
+                 synchrony=(sd(sum_curve$tot_igr))^2/(sum(sd))^2)
+    
+    CV_perf <- sd(sum_curve$tot_igr)/mean(sum_curve$tot_igr)
+    return(data.frame(CV_perf_actual=CV_perf,
+                      pop_CVperf_actual=pop_CV$pop_CVperf_actual,
+                      synchrony_actual=pop_CV$synchrony,
+                      composition=r["composition_name"],
+                      richness=r["richness"]))
+  }) |>
+    do.call(what = "rbind")
+}
+
+T_norm1 <- df_red1$temp
+T_norm1<-T_norm1[c(1:5,8:12,15:19,22:26, 29:33)]
+df_CVperf_obs_dens1 <- calculate_actual_cv(T_norm1)
+
+plot_CV_perfs1 <- ggplot(data = df_CVperf_obs_dens1, 
+                        aes(x = as.factor(richness), y = CV_perf_actual)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_point() +
+  geom_text_repel(aes(label = composition_name),
+                  size = 3,
+                  max.overlaps = 15,
+                  box.padding = 0.5,
+                  point.padding = 0.3,
+                  segment.color = 'grey50') +
+  theme_minimal() +
+  labs(x = "Species Richness", 
+       y = "CV of Performance Observed",
+       title = "1: Community CV by Richness",
+       color = "Richness")
+
+comp_choice1 <- df_CVperf_obs_dens1 %>% 
+  filter(composition_name %in% c("PT", "CD", "LT", "CLT", "LPT","DPT", "CDLT", "DLPT", "CDLP")) %>% 
+  mutate(temp_series = 1)
+
+T_norm2 <- df_red2$temp
+T_norm2<-T_norm2[c(1:5,8:12,15:19,22:26, 29:33)]
+df_CVperf_obs_dens2 <- calculate_actual_cv(T_norm2)
+
+plot_CV_perfs2 <- ggplot(data = df_CVperf_obs_dens2, 
+                        aes(x = as.factor(richness), y = CV_perf_actual)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_point() +
+  geom_text_repel(aes(label = composition_name),
+                  size = 3,
+                  max.overlaps = 15,
+                  box.padding = 0.5,
+                  point.padding = 0.3,
+                  segment.color = 'grey50') +
+  theme_minimal() +
+  labs(x = "Species Richness", 
+       y = "CV of Performance Observed",
+       title = "2: Community CV by Richness",
+       color = "Richness")
+
+comp_choice2 <- df_CVperf_obs_dens2 %>% 
+  filter(composition_name %in% c("LT", "CP", "PT", "CLT", "DLP","DPT", "CDLT", "CDLP", "CDPT")) %>% 
+  mutate(temp_series = 2)
+
+T_norm3 <- df_red3$temp
+T_norm3<-T_norm3[c(1:5,8:12,15:19,22:26, 29:33)]
+df_CVperf_obs_dens3 <- calculate_actual_cv(T_norm3)
+
+plot_CV_perfs3 <- ggplot(data = df_CVperf_obs_dens3, 
+                        aes(x = as.factor(richness), y = CV_perf_actual)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_point() +
+  geom_text_repel(aes(label = composition_name),
+                  size = 3,
+                  max.overlaps = 15,
+                  box.padding = 0.5,
+                  point.padding = 0.3,
+                  segment.color = 'grey50') +
+  theme_minimal() +
+  labs(x = "Species Richness", 
+       y = "CV of Performance Observed",
+       title = "3: Community CV by Richness",
+       color = "Richness")
+
+comp_choice3 <- df_CVperf_obs_dens3 %>% 
+  filter(composition_name %in% c("LT", "CD", "PT", "CLT", "DLP","DPT", "CDLT", "CDLP", "CDPT")) %>% 
+  mutate(temp_series = 3)
+
+T_norm4 <- df_red4$temp
+T_norm4<-T_norm4[c(1:5,8:12,15:19,22:26, 29:33)]
+df_CVperf_obs_dens4 <- calculate_actual_cv(T_norm4)
+
+plot_CV_perfs4 <- ggplot(data = df_CVperf_obs_dens4, 
+                        aes(x = as.factor(richness), y = CV_perf_actual)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_point() +
+  geom_text_repel(aes(label = composition_name),
+                  size = 3,
+                  max.overlaps = 15,
+                  box.padding = 0.5,
+                  point.padding = 0.3,
+                  segment.color = 'grey50') +
+  theme_minimal() +
+  labs(x = "Species Richness", 
+       y = "CV of Performance Observed",
+       title = "4: Community CV by Richness",
+       color = "Richness")
+
+comp_choice4 <- df_CVperf_obs_dens4 %>% 
+  filter(composition_name %in% c("LT", "LP", "PT", "CLT", "LPT","DPT", "CDLT", "CDLP", "CDPT")) %>% 
+  mutate(temp_series = 4)
+
+all_comps <- bind_rows(comp_choice1, comp_choice2, comp_choice3, comp_choice4)
+
+### Calcualate Trait summaries
+
+species_T_opt <- TPC_predicted_dens %>% 
+  filter(species != "S") %>% 
+  group_by(species) %>% 
+  slice_max(predicted, n = 1, with_ties = FALSE) %>% 
+  ungroup() %>% 
+  transmute(species, T_opt = temperature)
+
+composition_T_opt_summary <- all_comps %>% 
+  distinct(composition_name, richness) %>% 
+  left_join(all_combinations, by = c("composition_name", "richness")) %>% 
+  unnest(species) %>% 
+  left_join(species_T_opt, by = "species") %>% 
+  group_by(composition_name, richness) %>% 
+  summarise(
+    T_opt_mean = abs(mean(T_opt) - 22.5),
+    sd_T_opt = sd(T_opt),
+    .groups = "drop"
+  )
+
+all_comps <- left_join(all_comps, df_CVperf_naive_dens, by = c("composition_name", "richness"))
+all_comps <- left_join(all_comps, composition_T_opt_summary, by = c("composition_name", "richness"))
+
+### Calculate TPC overlap (not used in analysis)
+
+trapz <- function(x, y) {
+  sum(diff(x) * (head(y, -1) + tail(y, -1)) / 2)
+}
+
+tpc_density_shapes <- TPC_predicted_dens |>
+  arrange(species, temperature) |>
+  group_by(species) |>
+  mutate(
+    positive_predicted = pmax(predicted, 0),
+    density = positive_predicted / trapz(temperature, positive_predicted)
+  ) |>
+  ungroup()
+
+calculate_pairwise_tpc_overlap <- function(species_pair) {
+  pair_curves <- tpc_density_shapes |>
+    filter(species %in% species_pair) |>
+    select(species, temperature, density) |>
+    pivot_wider(names_from = species, values_from = density) |>
+    arrange(temperature)
+  curve_names <- species_pair
+
+  trapz(
+    pair_curves$temperature,
+    pmin(pair_curves[[curve_names[1]]], pair_curves[[curve_names[2]]])
+  )
+}
+
+calculate_shared_tpc_overlap <- function(community) {
+  community_curves <- tpc_density_shapes |>
+    filter(species %in% community) |>
+    select(species, temperature, density) |>
+    pivot_wider(names_from = species, values_from = density) |>
+    arrange(temperature)
+
+  trapz(
+    community_curves$temperature,
+    do.call(pmin, community_curves[community])
+  )
+}
+
+community_tpc_pairwise_overlap <- all_combinations |>
+  mutate(species_pairs = map(species, ~ combn(.x, 2, simplify = FALSE))) |>
+  select(composition_name, richness, species_pairs) |>
+  unnest_longer(species_pairs) |>
+  mutate(
+    species_pair = map_chr(species_pairs, ~ paste(sort(.x), collapse = "_")),
+    pairwise_tpc_overlap = map_dbl(species_pairs, calculate_pairwise_tpc_overlap)
+  ) |>
+  select(composition_name, richness, species_pair, pairwise_tpc_overlap)
+
+community_tpc_overlap <- community_tpc_pairwise_overlap |>
+  group_by(composition_name, richness) |>
+  summarise(
+    n_pairs = n(),
+    mean_pairwise_tpc_overlap = mean(pairwise_tpc_overlap),
+    min_pairwise_tpc_overlap = min(pairwise_tpc_overlap),
+    max_pairwise_tpc_overlap = max(pairwise_tpc_overlap),
+    sd_pairwise_tpc_overlap = sd(pairwise_tpc_overlap),
+    .groups = "drop"
+  ) |>
+  left_join(
+    all_combinations |>
+      mutate(shared_tpc_overlap = map_dbl(species, calculate_shared_tpc_overlap)) |>
+      select(composition_name, richness, shared_tpc_overlap),
+    by = c("composition_name", "richness")
+  )
+
+all_comps <- left_join(all_comps, community_tpc_overlap, by = c("composition_name", "richness"))
+CPCs <- all_comps
+
+list_species<- split(species_list,species_list)
+
+list_CVperf<- lapply(list_species,function(s){
+  selected <- TPC_predicted_dens %>% 
+  dplyr::filter(species == s) 
+  
+  CV_perf <- sd(selected$predicted)/mean(selected$predicted)
+  return(data.frame(CV_perf_null_species=CV_perf,species=s))
+})
+
+df_CVperf_naive_species<-do.call("rbind", list_CVperf)
+
+calculate_actual_species_cv <- function(T_norm, temp_series_name) {
+  lapply(list_species,function(s){
+    selected <- TPC_predicted_dens %>% 
+    dplyr::filter(species %in% s, temperature %in% T_norm) 
+    
+    CV_perf <- sd(selected$predicted)/mean(selected$predicted)
+    return(data.frame(CV_perf_actual_species=CV_perf,species=s, temp_series=temp_series_name))
+  }) |>
+    do.call(what = "rbind")
+}
+
+df_CVperf_actual_species_TS1 <- calculate_actual_species_cv(df_red1$temp, "TS1")
+df_CVperf_actual_species_TS2 <- calculate_actual_species_cv(df_red2$temp, "TS2")
+df_CVperf_actual_species_TS3 <- calculate_actual_species_cv(df_red3$temp, "TS3")
+df_CVperf_actual_species_TS4 <- calculate_actual_species_cv(df_red4$temp, "TS4")
+
+df_CVperf_actual_species<-rbind(df_CVperf_actual_species_TS1,df_CVperf_actual_species_TS2,df_CVperf_actual_species_TS3,df_CVperf_actual_species_TS4)
+
+df_CVperf_species<-left_join(df_CVperf_actual_species,df_CVperf_naive_species)
+
+```
+
+```{r}
+#| include: false
+#| label: Community Experiment analysis
+
+
+# Remove initial stable period 
+ts_df <- ts_df %>%
+  filter(day>4) %>% 
+  mutate(day=day-4)
+
+
+# Remove only the specific sampling error days.
+outlier_sampling_days <- tribble(
+  ~sample_ID, ~day,
+  "DLP_TS3_2", 4,
+  "PT_TS4_1", 1,
+  "LP_TS4_1", 3
+)
+
+ts_df <- ts_df %>%
+  anti_join(outlier_sampling_days, by = c("sample_ID", "day"))
+
+
+# Create  variables
+
+ts_df <- ts_df %>% mutate(richness=as.factor(nchar(composition_name)))
+
+CPCs<-CPCs %>% mutate(temp_series=paste0("TS",temp_series),
+                      richness = as.factor(richness))
+
+# Detrend each species-level time series with one smooth trend pooled across replicates.
+# Within each composition x temperature x species, the GAM day trend is fit
+# using all three replicate time series, then removed from each observation.
+
+
+get_pooled_gam_trend <- function(y, day) {
+  if (length(y) >= 4 && n_distinct(day, na.rm = TRUE) >= 4) {
+    trend_data <- tibble(y = y, day = day)
+    smooth_k <- 5 
+    trend_model <- gam(y ~ s(day, k = smooth_k), data = trend_data, method = "REML")
+    pooled_trend <- predict(trend_model, newdata = trend_data)
+  } else {
+    pooled_trend <- rep(mean(y, na.rm = TRUE), length(y))
+  }
+
+  pooled_trend
+}
+
+ts_df <- ts_df %>%
+  group_by(composition_name, predict_spec) %>%
+  mutate(
+    mean.dens.ml_trend = get_pooled_gam_trend(mean.dens.ml, day),
+    biomass_trend = get_pooled_gam_trend(biomass, day),
+    mean.dens.ml_detrended = mean.dens.ml - mean.dens.ml_trend + mean(mean.dens.ml_trend, na.rm = TRUE),
+    biomass_detrended = biomass - biomass_trend 
+  ) %>%
+  ungroup() 
+
+
+
+  
+
+# Calculate community variability 
+
+CV_0_df <- ts_df %>% 
+  group_by(sample_ID, composition_name, temp_series, replicate, richness, day) %>% 
+  summarise(com_biom=sum(biomass_detrended),
+            Para ="P" %in% strsplit(composition_name, split="")[[1]]) %>% 
+  ungroup() %>% 
+  group_by(sample_ID, composition_name, temp_series, replicate, richness, Para) %>% 
+  summarise( mean_biom=mean(com_biom),
+            sd_biom=sd(com_biom))
+
+
+
+# population variability / synchrony
+
+pop_CV <- ts_df |> 
+  group_by(sample_ID, composition_name, temp_series, replicate, richness, predict_spec) |> 
+  summarise(sd_pop_biom = sd(biomass_detrended)) |> 
+  ungroup() 
+pop_CV<-pop_CV |> left_join(CV_0_df, by = c("sample_ID", "composition_name", "temp_series", "replicate", "richness"))
+
+
+
+pop_CV <- pop_CV |> 
+  group_by(sample_ID, composition_name, temp_series, replicate, richness) |> 
+  summarise(mean_sd_pop = mean(sd_pop_biom),
+            synchrony = unique(sd_biom)^2/(sum(sd_pop_biom))^2)
+
+
+CV_0_df <- CV_0_df |> left_join(pop_CV, by = c("sample_ID", "composition_name", "temp_series", "replicate", "richness"))
+
+# Join with CPC
+
+CPC_CV_df <- CV_0_df %>% 
+  full_join(CPCs) %>%
+  mutate(richness_num = as.numeric(as.character(richness)))
+
+
+
+# Create models
+
+m_CPC_obs<-lm(data=CPC_CV_df, log10(sd_biom)~log10(CV_perf_actual))
+sum_CPC_obs<-summary(m_CPC_obs)
+r2_obs <- sum_CPC_obs$adj.r.squared
+
+autoplot(m_CPC_obs)
+
+
+MASS::boxcox(lm(data=CPC_CV_df, (sd_biom)~(sd_T_opt)))
+
+m_CPC_naive<-lm(data=CPC_CV_df, log10(sd_biom)~log10(CV_perf_null))
+autoplot(m_CPC_naive)
+sum_CPC_naive<-summary(m_CPC_naive)
+r2_naive <- sum_CPC_naive$adj.r.squared
+
+m_T_opt_mean<-lm(data=CPC_CV_df, log10(sd_biom)~(T_opt_mean))
+autoplot(m_T_opt_mean)
+sum_T_opt_mean<-summary(m_T_opt_mean)
+r2_T_opt_mean <- sum_T_opt_mean$adj.r.squared
+
+m_T_opt_sd<-lm(data=CPC_CV_df, log10(sd_biom)~sd_T_opt)
+autoplot(m_T_opt_sd)
+sum_T_opt_sd<-summary(m_T_opt_sd)
+r2_T_opt_sd <- sum_T_opt_sd$adj.r.squared
+
+m_traits_interaction <-lm(data=CPC_CV_df, log10(sd_biom)~sd_T_opt*T_opt_mean)
+autoplot(m_traits_interaction)
+sum_traits_interaction<-summary(m_traits_interaction)
+r2_traits_interaction <- sum_traits_interaction$adj.r.squared
+
+### Functions for extracting model parameters
+
+format_p <- function(p) {
+  ifelse(p < 0.001, "< 0.001", sprintf("%.3f", p))
+}
+
+get_model_stats <- function(model, predictor_label, predictor_term = 2) {
+  model_summary <- summary(model)
+  coefficients <- model_summary$coefficients
+  predictor_coefficients <- coefficients[predictor_term, ]
+
+  tibble(
+    predictor = predictor_label,
+    beta = predictor_coefficients["Estimate"],
+    t_value = predictor_coefficients["t value"],
+    p_value = predictor_coefficients["Pr(>|t|)"],
+    r_squared = model_summary$r.squared
+  )
+}
+
+### Main results
+
+predictor_stats <- bind_rows(
+  get_model_stats(m_CPC_obs, "Actual community performance variability"),
+  get_model_stats(m_CPC_naive, "Null community performance variability"),
+  get_model_stats(m_T_opt_mean, "|mean Topt - mean temperature|"),
+  get_model_stats(m_T_opt_sd, "sd(Topt)"),
+  get_model_stats(m_traits_interaction, "Trait summaries")
+) %>%
+  mutate(
+    beta_text = formatC(beta, format = "e", digits = 2),
+    t_text = sprintf("%.2f", t_value),
+    p_text = format_p(p_value),
+    r2_text = sprintf("%.2f", r_squared)
+  )
+
+obs_stats <- predictor_stats %>% filter(predictor == "Actual community performance variability")
+naive_stats <- predictor_stats %>% filter(predictor == "Null community performance variability")
+topt_mean_stats <- predictor_stats %>% filter(predictor == "|mean Topt - mean temperature|")
+topt_sd_stats <- predictor_stats %>% filter(predictor == "sd(Topt)")
+traits_interaction_stats <- predictor_stats %>% filter(predictor == "Trait summaries")
+
+### Results full model for CV(CP_actual)
+
+
+m_full<-lm(data=CPC_CV_df, log10(sd_biom)~log10(CV_perf_actual)*richness+temp_series)
+
+sum_full<-summary(m_full)
+r2_full_adj<-sum_full$adj.r.squared
+r2_full_adj_text <- sprintf("%.2f", r2_full_adj)
+
+full_model_f <- unname(sum_full$fstatistic["value"])
+full_model_df_num <- unname(sum_full$fstatistic["numdf"])
+full_model_df_den <- unname(sum_full$fstatistic["dendf"])
+full_model_p <- pf(full_model_f, full_model_df_num, full_model_df_den, lower.tail = FALSE)
+full_model_f_text <- sprintf("%.2f", full_model_f)
+full_model_p_text <- format_p(full_model_p)
+
+anova_full <- anova(m_full)
+full_perf_f <- anova_full["log10(CV_perf_actual)", "F value"]
+full_perf_df_num <- anova_full["log10(CV_perf_actual)", "Df"]
+full_perf_p <- anova_full["log10(CV_perf_actual)", "Pr(>F)"]
+full_perf_f_text <- sprintf("%.2f", full_perf_f)
+full_perf_p_text <- format_p(full_perf_p)
+
+full_temp_f <- anova_full["temp_series", "F value"]
+full_temp_df_num <- anova_full["temp_series", "Df"]
+full_temp_p <- anova_full["temp_series", "Pr(>F)"]
+full_temp_f_text <- sprintf("%.2f", full_temp_f)
+full_temp_p_text <- format_p(full_temp_p)
+
+full_interaction_f <- anova_full["log10(CV_perf_actual):richness", "F value"]
+full_interaction_df_num <- anova_full["log10(CV_perf_actual):richness", "Df"]
+full_interaction_p <- anova_full["log10(CV_perf_actual):richness", "Pr(>F)"]
+full_interaction_f_text <- sprintf("%.2f", full_interaction_f)
+full_interaction_p_text <- format_p(full_interaction_p)
+
+full_coefficients <- as_tibble(sum_full$coefficients, rownames = "term")
+
+richness_slope_2 <- full_coefficients %>%
+  filter(term == "log10(CV_perf_actual)") %>%
+  pull(Estimate)
+richness_slope_3 <- richness_slope_2 + full_coefficients %>%
+  filter(term == "log10(CV_perf_actual):richness3") %>%
+  pull(Estimate)
+richness_slope_4 <- richness_slope_2 + full_coefficients %>%
+  filter(term == "log10(CV_perf_actual):richness4") %>%
+  pull(Estimate)
+
+richness_slope_text <- paste0(
+  "richness 2: β = ", sprintf("%.2f", richness_slope_2),
+  "; richness 3: β = ", sprintf("%.2f", richness_slope_3),
+  "; richness 4: β = ", sprintf("%.2f", richness_slope_4)
+)
+
+richness_interaction_text <- full_coefficients %>%
+  filter(str_detect(term, "^log10\\(CV_perf_actual\\):richness")) %>%
+  mutate(
+    richness_level = str_remove(term, "^log10\\(CV_perf_actual\\):richness"),
+    contrast_text = paste0(
+      "richness ", richness_level, " vs. richness 2: β = ",
+      formatC(Estimate, format = "e", digits = 2),
+      ", *p* = ", format_p(`Pr(>|t|)`)
+    )
+  ) %>%
+  pull(contrast_text) %>%
+  paste(collapse = "; ")
+
+temp_series_text <- full_coefficients %>%
+  filter(str_detect(term, "^temp_series")) %>%
+  mutate(
+    temp_level = str_remove(term, "^temp_series"),
+    contrast_text = paste0(
+      temp_level, " vs. TS1: β = ",
+      formatC(Estimate, format = "e", digits = 2),
+      ", *p* = ", format_p(`Pr(>|t|)`)
+    )
+  ) %>%
+  pull(contrast_text) %>%
+  paste(collapse = "; ")
+```
+
+```{r}
+#| include: false
+#| label: Model diagnostics
+
+diagnose_lm_transformations <- function(data, predictor, response = "sd_biom") {
+  df <- data |>
+    dplyr::ungroup() |>
+    dplyr::select(
+      y = dplyr::all_of(response),
+      x = dplyr::all_of(predictor)
+    ) |>
+    tidyr::drop_na() |>
+    dplyr::filter(y > 0, x > 0) |>
+    dplyr::mutate(
+      log_y = log10(y),
+      log_x = log10(x)
+    )
+
+  models <- list(
+    raw_raw  = lm(y ~ x, data = df),
+    logy_raw = lm(log_y ~ x, data = df),
+    raw_logx = lm(y ~ log_x, data = df),
+    log_log  = lm(log_y ~ log_x, data = df)
+  )
+
+  purrr::imap_dfr(models, function(fit, model_name) {
+    model_resid <- residuals(fit)
+    model_fitted <- fitted(fit)
+    cooks <- cooks.distance(fit)
+
+    tibble::tibble(
+      model = model_name,
+      predictor = predictor,
+      shapiro_p = shapiro.test(model_resid)$p.value,
+      bp_p = lmtest::bptest(fit)$p.value,
+      max_cooks_d = max(cooks, na.rm = TRUE),
+      n_high_influence = sum(cooks > 4 / nrow(df), na.rm = TRUE),
+      residual_fitted_cor = cor(abs(model_resid), model_fitted),
+      adj_r2 = summary(fit)$adj.r.squared
+    )
+  }) |>
+    dplyr::arrange(
+      dplyr::desc(bp_p),
+      dplyr::desc(shapiro_p),
+      max_cooks_d
+    )
+}
+
+
+diagnose_lm_transformations(CPC_CV_df, "CV_perf_actual")
+diagnose_lm_transformations(CPC_CV_df, "CV_perf_null")
+diagnose_lm_transformations(CPC_CV_df, "T_opt_mean")
+diagnose_lm_transformations(CPC_CV_df, "sd_T_opt")
+```
+
+# Scope of this supplement
+
+This supplement provides the empirical methods, data-processing steps, and
+supporting analyses for the ciliate community experiment. The main manuscript
+reports the central empirical test of whether variability in community
+performance predicts community biomass variability. The material below gives
+the experimental design, construction of empirical thermal performance curves,
+calculation of null and actual CV(CP), detrending of biomass time series, model
+outputs, and mechanistic analyses based on performance synchrony and population
+variability.
+
+# Empirical study
+
+## Experimental overview
+
+The experimental study consisted of two independent experiments:
+
+1.  **Thermal performance curve experiment**: This experiment quantified species intrinsic performance along the temperature gradient (@fig-tpc-density), yielding thermal performance curves for each species. These curves were used to calculate $CV(CP_{\text{null}})$ and $CV(CP_{\text{actual}})$ under the temperature regimes used in the community experiment (@fig-temp).
+
+2.  **Community experiment**: Selected communities were exposed to fluctuating temperature regimes. Community biomass variability was then related to $CV(CP)$ and to trait-summary predictors.
+
+```{r}
+#| label: tbl-experiment-overview
+#| tbl-cap: "Overview of the two experiments included in this report."
+#| tbl-cap-location: bottom
+#| echo: false
+#| message: false
+#| warning: false
+
+format_date_range <- function(dates) {
+  dates <- as.Date(dates)
+  paste0(
+    format(min(dates, na.rm = TRUE), "%d %b %Y"),
+    " to ",
+    format(max(dates, na.rm = TRUE), "%d %b %Y")
+  )
+}
+
+format_duration <- function(dates) {
+  dates <- as.Date(dates)
+  paste0(
+    as.integer(max(dates, na.rm = TRUE) - min(dates, na.rm = TRUE)) + 1,
+    " days"
+  )
+}
+
+experiment_overview <- tibble(
+  Experiment = c(
+    "Thermal performance curve experiment",
+    "Community experiment"
+  ),
+  Duration = c(
+    paste0(format_duration(TPC_timeseries_raw$date)),
+    paste0(format_duration(ts_df_raw$date))
+  ),
+  `Sampling days` = c(
+    n_distinct(TPC_timeseries_raw$day),
+    n_distinct(ts_df_raw$day)
+  ),
+  `Total samples` = c(
+    format(nrow(TPC_timeseries_raw), big.mark = ","),
+    format(nrow(ts_df_raw |> select(sample_ID, day) |> distinct()), big.mark = ",")
+  ),
+  `Outcome / purpose` = c(
+    "Estimate species thermal performance curves and intrinsic growth rates across temperature.",
+    "Test whether community performance variability predicts community biomass variability under fluctuating temperatures."
+  )
+)
+
+knitr::kable(
+  experiment_overview,
+  align = c("l", "l", "r", "r", "l"),
+  table.attr = 'class="table table-striped table-hover table-sm"'
+)
+```
+
+## Thermal performance curve experiment
+
+A monoculture experiment was used to estimate intrinsic growth across temperature for the five ciliate species. The resulting thermal performance curves (TPCs) are the basis for the community performance summaries used in the community experiment.
+
+```{r}
+#| label: fig-tpc-density
+#| fig-cap: "Density-based thermal performance curves. Points show estimated intrinsic growth rates from the early growth window; lines show the predicted species-specific thermal performance curves used in the CP analyses."
+#| fig-height: 5.5
+#| fig-width: 8
+#| fig-align: center
+#| fig-cap-location: bottom
+#| message: false
+
+ggplot() +
+  geom_line(
+    data = TPCs,
+    aes(x = temperature, y = predicted, colour = species),
+    linewidth = 1.2
+  ) +
+  geom_point(
+    data = TPC_dens_df,
+    aes(x = temperature, y = igr, colour = species),
+    size = 2.2,
+    alpha = 0.85
+  ) +
+  scale_colour_viridis_d(option = "magma", end = 0.85) +
+  theme_minimal() +
+  labs(
+    x = "Temperature (°C)",
+    y = "Intrinsic growth rate (igr)",
+    color = "Species"
+  )
+```
+
+### Temperature regime
+
+The community experiment required predefined temperature time series to calculate $CV(CP_{\text{actual}})$. Temperature treatments consisted of four fluctuating time series. Temperature values were drawn from a normal distribution with reddened noise ($\gamma$ = 0.8), a mean of 22.5°C, and a standard deviation of 3.5°C (@fig-temp). Before the fluctuating treatments began, communities were kept at a constant 22.5°C for four days; this initial stable period was later removed before analysis. The same four generated temperature time series were used as experimental temperature regimes in the community experiment and to calculate actual community performance from the species-specific TPCs.
+
+```{r}
+#| label: fig-temp
+#| fig-cap: "Experimental temperature regimes. The four fluctuating temperature time series were generated around a mean temperature of 22.5°C, shown by the dashed horizontal line, and were later used to calculate experienced community performance."
+#| fig-height: 6
+#| fig-width: 8
+#| fig-align: center
+#| fig-cap-location: bottom
+#| message: false
+
+
+# Plotting the result
+ts1<-ggplot(temp_series, aes(x = time, y = temp)) +
+  geom_line(linewidth = 1, color="red3") + 
+  geom_point(size = 2, color="red3" )+
+  scale_y_continuous(breaks = seq(floor(min(temp_series$temp)), 
+                                  ceiling(max(temp_series$temp)), 
+                                  by = 3)) + 
+  theme_minimal(base_size = 16) +
+  labs(
+    x = "Time Step",
+    y = "Temperature (°C)",
+    color = "Time series"
+  )+
+  facet_wrap(~temp_series)+
+  geom_hline(yintercept=22.5, linetype="dashed")
+
+ts1
+```
+
+### Actual community performance variability
+
+The selected community compositions span low, intermediate, and high actual community performance variability within each temperature regime and richness level. Note that $CV(CP)$ was inherently related to species richness (see also @fig-sem1).
+
+```{r}
+#| label: fig-tpc-design-cv
+#| fig-cap: "Actual community performance variability under each temperature regime. Grey points show all possible species combinations not selected for the community experiment, and coloured labelled points show the selected community compositions. CV(CP) is expected to vary with species richness because CP is calculated from the summed species-level performance curves."
+#| fig-height: 6
+#| fig-width: 9
+#| fig-align: center
+#| fig-cap-location: bottom
+#| message: false
+#| warning: false
+
+cv_point_position <- position_jitter(width = 0.08, height = 0, seed = 12)
+
+all_actual_cv <- bind_rows(
+  df_CVperf_obs_dens1 |> mutate(temp_series = "TS1"),
+  df_CVperf_obs_dens2 |> mutate(temp_series = "TS2"),
+  df_CVperf_obs_dens3 |> mutate(temp_series = "TS3"),
+  df_CVperf_obs_dens4 |> mutate(temp_series = "TS4")
+) |>
+  mutate(
+    richness = as.factor(richness),
+    temp_series = factor(temp_series, levels = paste0("TS", 1:4))
+  )
+
+selected_actual_cv <- CPCs |>
+  transmute(
+    composition_name,
+    richness = as.factor(richness),
+    temp_series = factor(as.character(temp_series), levels = paste0("TS", 1:4)),
+    CV_perf_actual
+  ) |>
+  distinct()
+
+plot_cv_actual_design <- ggplot(
+  all_actual_cv,
+  aes(x = richness, y = CV_perf_actual)
+) +
+  geom_boxplot(outlier.shape = NA, width = 0.55, color = "grey45", fill = "grey92") +
+  geom_point(position = cv_point_position, alpha = 0.35, size = 1.8, color = "grey45") +
+  geom_point(
+    data = selected_actual_cv,
+    position = cv_point_position,
+    size = 2.7,
+    alpha = 0.95
+  ) +
+  geom_text_repel(
+    data = selected_actual_cv,
+    aes(label = composition_name),
+    size = 2.7,
+    max.overlaps = Inf,
+    box.padding = 0.3,
+    point.padding = 0.2,
+    segment.color = "grey55",
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ temp_series) +
+  scale_color_brewer(palette = "YlOrRd", name = "Selected richness") +
+  theme_minimal() +
+  labs(
+    x = "Species richness",
+    y = expression(CV(CP[actual]))
+  )
+
+ plot_cv_actual_design 
+```
+
+## Community experiment
+
+Communities were assembled from the five-species ciliate pool and designed to span three richness levels: two, three, and four species. For each temperature regime and richness level, three community compositions were selected to represent a gradient in expected community performance variability: the composition with the lowest $CV(CP)$, the composition with the highest $CV(CP)$, and the composition closest to the median $CV(CP)$ (@fig-tpc-design-cv). This produced a factorial design with three richness levels, three selected compositions per richness level, four temperature regimes, and three replicate microcosms per treatment combination ($n = 108$). We sampled 27 times over 37 days, resulting in 2916 samples.
+
+### Analysis
+
+To quantify temporal variability in community biomass, the initial stable period (first two sampling days) was removed, leaving 2700 samples, of which 3 were excluded due to sampling errors. Species-level time series were then detrended before calculating community variability. For each species within each community composition and across temperature time series, a smooth generalized additive model (GAM) was fitted to describe the average change in density or biomass over experimental day (@fig-3). This smooth trend was fitted using all replicate observations available for that species-composition combination. The fitted trend represents the shared temporal trajectory expected from gradual directional change over the experiment.
+
+Detrended biomass was calculated by subtracting the fitted biomass trend from the observed biomass value. This leaves the short-term deviation around the smooth temporal trend, rather than the raw biomass trajectory itself. At the community level, these detrended species-level biomass values were averaged within each sample and day. Community variability was then quantified as the standard deviation of detrended community biomass across days for each sample.
+
+Observed community variability was analysed using four predictors: variability in actual community performance ($CV(CP_{\text{actual}})$), variability in null community performance ($CV(CP_{\text{null}})$), the absolute distance between mean thermal optimum and mean environmental temperature ($|\bar{T}_{opt} - \bar{T}|$), and variation in thermal optima among species ($sd(T_{opt})$). Each predictor was analysed in a separate linear model with detrended community biomass variability as the response variable. Log-transformations were applied to improve model diagnostics. For these models, the coefficient estimate (β), *t* value, *p* value, and $R^2$ are reported.
+
+```{r}
+#| label: fig-3
+#| fig-cap: "Detrending of species-level biomass time series. Thin lines show observed biomass trajectories for replicate microcosms, and thick lines show the pooled GAM trend fitted for each composition-by-species combination before calculating detrended biomass variability."
+#| fig-height: 12
+#| fig-width: 8
+#| fig-align: center
+#| fig-cap-location: bottom
+#| message: false
+
+plot_trend <- ggplot(data = ts_df)+
+  geom_line(
+    aes(x = day, y = biomass,  group = interaction(sample_ID, replicate)),
+    alpha = 0.25
+  )+
+  geom_line(
+    aes(x = day, y = biomass_trend,  group = interaction(composition_name, temp_series, predict_spec)),
+    linewidth = 0.9
+  )+
+  facet_wrap(composition_name~predict_spec, scale="free_y", ncol=5)+
+  theme_minimal()+
+  labs(
+    x = "Day",
+    y = "Original biomass",
+    color = "Temperature Regime"
+  )
+
+plot_trend
+
+```
+
+### Main Result
+
+<!-- Each performance summary was tested in a linear model including species richness and an interaction term between performance summary and richness.  -->
+Variability of intrinsic community performance was positively related to variability of community biomass (@fig-4). $CV(CP_{\text{actual}})$ explained more variation in biomass variability ($R^2=$ `r obs_stats$r2_text`) than $CV(CP_{\text{null}})$ ($R^2=$ `r naive_stats$r2_text`). Communities with higher $CV(CP_{\text{actual/null}})$ had higher temporal biomass variability ($β_{actual}$ = `r obs_stats$beta_text`, *p* = `r obs_stats$p_text`; $β_{null}$ = `r naive_stats$beta_text`, *p* = `r naive_stats$p_text`).
+
+Similarly, trait summaries were also predictive of stability, with $|\bar{T}_{opt} - \bar{T}|$ explaining less variance ($R^2=$ `r topt_mean_stats$r2_text`) than $sd({T}_{opt})$ ($R^2=$ `r topt_sd_stats$r2_text`). The larger the distance between the average temperature and the average thermal optimum was (large $|\bar{T}_{opt} - \bar{T}|$), the more variable the communities were (β = `r topt_mean_stats$beta_text`, *p* = `r topt_mean_stats$p_text`). On the other hand, the spread of the thermal optima ($sd({T}_{opt})$) had a stabilising effect ( β = `r topt_sd_stats$beta_text`, *p* = `r topt_sd_stats$p_text`).
+
+```{r}
+#| label: fig-4
+#| fig-cap: "Predictors of detrended community biomass variability. Panels A–D show the relationships between community biomass variability and (A) actual community performance (CP) variability, (B) null CP variability, (C) the absolute difference between mean species thermal optimum and mean experienced temperature, and (D) variation in species thermal optima. Solid lines show fitted linear regressions and shaded areas show 95% confidence intervals. Panel E compares the R^2values of the four single-predictor models with that of the trait-summary model, which includes mean thermal mismatch, thermal-optimum variation, and their interaction."
+#| fig-height: 12
+#| fig-width: 22
+#| fig-align: center
+#| fig-cap-location: bottom
+#| message: false
+#| warning: false
+
+
+
+
+richness_colors <- c(
+  "2" = "#6E0F0F",
+  "3" = "#A23E2B",
+  "4" = "#D96C4A"
+)
+
+richness_color_scale <- function() {
+  scale_color_manual(
+    name = "Species richness",
+    values = richness_colors,
+    breaks = names(richness_colors),
+    guide = guide_legend(
+      override.aes = list(alpha = 0.1, linewidth = 1.2, size = 3)
+    )
+  )
+}
+
+plot_actual <- ggplot(data=CPC_CV_df, aes(x=log10(CV_perf_actual), y=log10(sd_biom)))+
+  geom_point(alpha=0.4, size=4, color="black")+
+  geom_smooth(method="lm", linewidth=2, alpha=0.15, color="black")+
+  richness_color_scale()+
+  theme_minimal(base_size = 20)+
+  # annotate(
+  #   "text",
+  #   x = -Inf, y = Inf,
+  #   label = paste0("R^2 == ", round(r2_obs, 2)),
+  #   parse = TRUE,
+  #   hjust = -0.3, vjust = 1.2,
+  #   size = 5
+  # )  +
+  ylab(expression(atop("Community variability", log10(sigma[biom]))))+
+  xlab(expression(atop("Actual CP variability", log10(CV(CP[actual])))))
+
+
+plot_null <- ggplot(data=CPC_CV_df, aes(x=log10(CV_perf_null), y=log10(sd_biom)))+
+  geom_point(alpha=0.4, size=4, color="black")+
+  geom_smooth(method="lm", linewidth=2, alpha=0.15, color="black")+
+  richness_color_scale()+
+  theme_minimal(base_size = 20)+
+  # annotate(
+  #   "text",
+  #   x = -Inf, y = Inf,
+  #   label = paste0("R^2 == ", round(r2_naive, 2)),
+  #   parse = TRUE,
+  #   hjust = -0.3, vjust = 1.2,
+  #   size = 5
+  # )  +
+  ylab(expression(atop("Community variability", log10(sigma[biom]))))+
+  xlab(expression(atop("Null CP variability", log10(CV(CP[null])))))
+
+plot_mean_T_opt <- ggplot(data=CPC_CV_df, aes(x=T_opt_mean, y=(sd_biom)))+
+  geom_point(alpha=0.4, size=4, color="black")+
+  geom_smooth(method="lm", linewidth=2, alpha=0.15, color="black")+
+  richness_color_scale()+
+  # annotate(
+  #   "text",
+  #   x = -Inf, y = Inf,
+  #   label = paste0("R^2 == ", round(r2_T_opt_mean, 2)),
+  #   parse = TRUE,
+  #   hjust = -0.3, vjust = 1.2,
+  #   size = 5
+  # )  +
+  theme_minimal(base_size = 20)+
+  ylab(expression(atop("Community variability", log10(sigma[biom]))))+
+  xlab(expression(atop("Mean thermal mismatch", group("|", bar(T)[opt] - bar(T), "|"))))
+
+
+plot_sd_T_opt <- ggplot(data=CPC_CV_df, aes(x=sd_T_opt, y=(sd_biom)))+
+  geom_point(alpha=0.4, size=4, color="black")+
+  geom_smooth(method="lm", linewidth=2, alpha=0.15, color="black")+
+  richness_color_scale()+
+  theme_minimal(base_size = 20)+
+  # annotate(
+  #   "text",
+  #   x = -Inf, y = Inf,
+  #   label = paste0("R^2 == ", round(r2_T_opt_sd, 2)),
+  #   parse = TRUE,
+  #   hjust = -0.3, vjust = 1.2,
+  #   size = 5
+  # )  +
+  ylab(expression(atop("Community variability", log10(sigma[biom]))))+
+  xlab(expression(atop("Thermal optima spread", sd(T[opt]))))
+
+r2_df <- tibble::tibble(
+  variable = c(
+    "CV_perf_actual",
+    "CV_perf_null",
+    "T_opt_mean",
+    "sd_T_opt",
+    "traits_interaction"
+  ),
+  r_squared = c(
+    summary(m_CPC_obs)$adj.r.squared,
+    summary(m_CPC_naive)$adj.r.squared,
+    summary(m_T_opt_mean)$adj.r.squared,
+    summary(m_T_opt_sd)$adj.r.squared,
+    summary(m_traits_interaction)$adj.r.squared
+  )
+) |>
+  dplyr::mutate(
+    variable = forcats::fct_reorder(variable, r_squared)
+  )
+
+
+
+library(dplyr)
+library(forcats)
+library(ggplot2)
+
+r2_plot <- ggplot(
+  r2_df,
+  aes(x = r_squared, y = variable)
+) +
+  geom_segment(
+    aes(
+      x = 0,
+      xend = r_squared,
+      yend = variable
+    ),
+    linewidth = 0.8,
+    colour = "grey75"
+  ) +
+  geom_point(
+    size = 4,
+    colour = "black"
+  ) +
+  geom_text(
+    aes(label = sprintf("%.2f", r_squared)),
+    nudge_x = 0.07,
+    hjust = 0,
+    size = 3.8
+  ) +
+  scale_y_discrete(
+    labels = c(
+      "CV_perf_actual" =
+        expression(
+          atop(
+            "Actual CP variability",
+            log[10](CV(CP[actual]))
+          )
+        ),
+      
+      "CV_perf_null" =
+        expression(
+          atop(
+            "Null CP variability",
+            log[10](CV(CP[null]))
+          )
+        ),
+      
+      "T_opt_mean" =
+        expression(
+          atop(
+            "Mean thermal mismatch",
+            group("|", bar(T)[opt] - bar(T), "|")
+          )
+        ),
+      
+      "sd_T_opt" =
+        expression(
+          atop(
+            "Thermal optima spread",
+            sd(T[opt])
+          )
+        ),
+      
+      "traits_interaction" =
+        expression(
+          atop(
+            "Trait interaction model",
+            group("|", bar(T)[opt] - bar(T), "|") %*% sd(T[opt])
+          )
+        )
+    )
+  ) +
+  scale_x_continuous(
+    limits = c(0, 1.1),
+    breaks = seq(0, 1, by = 0.2),
+    expand = expansion(mult = c(0, 0))
+  ) +
+  labs(
+    x = expression("Adjusted " * R^2),
+    y = NULL
+  ) +
+  theme_minimal(base_size = 20) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_text(
+      size = 20,
+      colour = "black",
+      lineheight = 0.9
+    ),
+    axis.text.x = element_text(colour = "black"),
+    axis.title.x = element_text(
+      margin = margin(t = 8)
+    )
+  )
+
+
+
+combined_design <- c(
+  area(t = 1, l = 1, b = 1, r = 1),
+  area(t = 1, l = 2, b = 1, r = 2),
+  area(t = 2, l = 1, b = 2, r = 1),
+  area(t = 2, l = 2, b = 2, r = 2),
+  area(t = 1, l = 3, b = 2, r = 3)
+)
+
+combined_plot <- wrap_plots(
+  plot_actual,
+  plot_null,
+  plot_mean_T_opt,
+  plot_sd_T_opt,
+  r2_plot,
+  design = combined_design,
+  widths = c(1, 1, 0.6),
+  guides = "collect"
+) +
+  plot_annotation(tag_levels = "A") &
+  theme(
+    legend.position = "bottom",
+    legend.box = "horizontal"
+  )
+
+combined_plot
+```
+
+### Full Model Results
+
+The full model included $CV(CP_{\text{actual}})$, species richness, temperature time series, and the interaction between $CV(CP_{\text{actual}})$ and richness. Together these terms explained most of the variation in detrended community biomass variability (adjusted $R^2$ = `r r2_full_adj_text`; overall $F$(`r full_model_df_num`, `r full_model_df_den`) = `r full_model_f_text`, *p* = `r full_model_p_text`). $CV(CP_{\text{actual}})$ accounted for a substantial component of model fit ($F$(`r full_perf_df_num`, `r full_model_df_den`) = `r full_perf_f_text`, *p* = `r full_perf_p_text`), and the relationship between $CV(CP_{\text{actual}})$ and biomass variability differed among richness levels ($F$(`r full_interaction_df_num`, `r full_model_df_den`) = `r full_interaction_f_text`, *p* = `r full_interaction_p_text`).
+
+Estimated slopes were positive at all richness levels (`r richness_slope_text`). The slope was shallower for three-species communities than for two-species communities, while the four-species slope was steeper but had overlapping uncertainty with the two-species slope (`r richness_interaction_text`). Temperature time series also contributed to the full model ($F$(`r full_temp_df_num`, `r full_model_df_den`) = `r full_temp_f_text`, *p* = `r full_temp_p_text`). @fig-full shows the $CV(CP_{\text{actual}})$ relationship grouped by richness and by temperature time series.
+
+```{r}
+#| label: fig-full
+#| fig-cap: "Full-model view of the relationship between actual community performance variability and detrended community biomass variability. The same relationship is shown by species richness on the left and by temperature time series on the right, with points showing communities and lines showing fitted linear trends."
+#| fig-height: 5
+#| fig-width: 8
+#| fig-align: center
+#| fig-cap-location: bottom
+#| message: false
+#| warning: false
+
+temp_colors <- c(
+  "TS1" = "#D9F0D3",
+  "TS2" = "#78C679",
+  "TS3" = "#238443",
+  "TS4" = "#004529"
+)
+
+temp_color_scale <- function() {
+  scale_color_manual(
+    name = "Temperature time series",
+    values = temp_colors,
+    breaks = names(temp_colors),
+    guide = guide_legend(
+      override.aes = list(alpha = 0.1, linewidth = 1.2, size = 3)
+    )
+  )
+}
+
+plot_actual_rich <- ggplot(data=CPC_CV_df, aes(x=log10(CV_perf_actual), y=log10(sd_biom), color=richness))+
+  geom_point(alpha=0.4, size=2)+
+  geom_smooth(method="lm", linewidth=1.2, alpha=0.15)+
+  richness_color_scale()+
+  theme_minimal()+
+  ylab(expression(atop("Community variability", log10(sigma[biom]))))+
+  xlab(expression(atop("Actual CP variability", log10(CV(CP[actual])))))
+
+plot_actual_temp <- ggplot(data=CPC_CV_df, aes(x=log10(CV_perf_actual), y=log10(sd_biom), color=temp_series))+
+  geom_point(alpha=0.4, size=2)+
+  geom_smooth(method="lm", linewidth=1.2, alpha=0.15)+
+  temp_color_scale()+
+  theme_minimal()+
+  ylab(expression(atop("Community variability", log10(sigma[biom]))))+
+  xlab(expression(atop("Actual CP variability", log10(CV(CP[actual])))))
+
+wrap_plots(
+  plot_actual_rich,
+  plot_actual_temp,
+  ncol = 2,
+  guides = "collect"
+) +
+  plot_layout(guides = "collect") +
+  plot_annotation(tag_levels = "A") &
+  theme(
+    legend.position = "bottom",
+    legend.box = "horizontal"
+  )
+```
+
+### Mechanistic breakdown
+
+For species biomass time series $b_i(t)$, community biomass is $B(t)=\sum_i b_i(t)$. The coefficient of variation of community biomass can be decomposed into biomass synchrony ($\phi_{\text{biom}}$) and weighted mean population variability:
+
+$$CV_{\text{biom}} = \frac{\sigma(B(t))}{\overline{B(t)}} = \sqrt{\phi_{\text{biom}}}\sum_i w_iCV(b_i(t)),$$ {#eq-cv-biom}
+
+where
+
+$$\phi_{\text{biom}} = \frac{\sigma^2\left(\sum_i b_i(t)\right)}{\left(\sum_i \sigma(b_i(t))\right)^2}
+\quad\text{and}\quad
+w_i = \frac{\overline{b_i(t)}}{\overline{B(t)}}.$$ {#eq-biom-synchrony-weight}
+
+Because the biomass time series were detrended and the response is the standard deviation of detrended community biomass rather than raw biomass $CV$, the empirical relationship differs from @eq-cv-biom. The response is $\sigma_{\text{biom}}$, which can be written as
+
+$$\sigma_{\text{biom}} = \sqrt{\phi_{\text{biom}}}\sum_i \sigma(b_i(t)) = \sqrt{\phi_{\text{biom}}}\,S\,\bar{\sigma}_{\text{biom}},$$ {#eq-sigma-biom}
+
+where mean population biomass variability is defined as
+
+$$\bar{\sigma}_{\text{biom}}=\frac{1}{S}\sum_i  \sigma(b_i),$$ {#eq-mean-sigma-biom-pop}
+
+and $S$ is species richness. Analogously, for species performance $r_i(t)$, community performance is $R(t)=\sum_i r_i(t)$ and
+
+$$CV(CP_{\text{actual}}) = \frac{\sigma(R(t))}{\overline{R(t)}} = \sqrt{\phi_{\text{perf}}} \widetilde{CV}_{perf},$$ {#eq-cv-performance}
+
+where performance synchrony is defined as $$\phi_{\text{perf}} = \sigma^2(R(t))/(\sum_i \sigma(r_i(t)))^2,$$ {#eq-syn-performance} and mean species performance variability as $$\widetilde{CV}_{perf} = \sum_i w_iCV(r_i(t)),$$ {#eq-mean-pop-CV-performance} with $w_i=\overline{r_i(t)}/\overline{R(t)}$. Thus, $CV(CP_{\text{actual}})$ integrates both performance synchrony ($\phi_{\text{perf}}$) and mean species performance variability ($\widetilde{CV}_{perf}$). This motivates tests of whether performance synchrony predicts biomass synchrony and whether mean species performance variability predicts mean population biomass variability (@fig-5):
+
+```{r}
+#| include: false
+#| label: SEM
+
+
+sem_vars <- c(
+  "CV_perf_actual",
+  "synchrony_actual",
+  "pop_CVperf_actual",
+  "synchrony",
+  "mean_sd_pop",
+  "sd_biom",
+  "richness",
+  "log_CV_pop_actual",
+  "log_syn_actual",
+  "log_CV_actual",
+  "log_sd_biom",
+  "log_syn",
+  "log_sd_pop",
+  "log_richness"
+)
+
+
+
+sem_df <- CPC_CV_df |> 
+  mutate(
+    log_CV_pop_actual = log10(pop_CVperf_actual),
+    log_syn_actual = log10(synchrony_actual),
+    log_CV_actual = log10(CV_perf_actual),
+    log_sd_biom = log10(sd_biom),
+    log_syn=log10(synchrony),
+    log_sd_pop=log10(mean_sd_pop),
+    richness=as.numeric(richness),
+    log_richness=log10(richness)
+  ) |> 
+  dplyr::ungroup() |>
+  dplyr::select(dplyr::all_of(sem_vars)) |>
+  dplyr::mutate(dplyr::across(
+    dplyr::everything(),
+    \(x) as.numeric(scale(x))
+  )) 
+
+if (is.na(parallel::detectCores())) {
+  parallel_namespace <- asNamespace("parallel")
+  unlockBinding("detectCores", parallel_namespace)
+  assign("detectCores", function(logical = TRUE) 1L, envir = parallel_namespace)
+  lockBinding("detectCores", parallel_namespace)
+}
+
+
+
+CP_sem_model_1 <- "
+
+  CV_perf_actual~log_richness
+
+  log_syn~CV_perf_actual
+  log_sd_pop~CV_perf_actual
+
+  log_sd_biom ~log_syn+log_sd_pop+log_richness
+
+  log_syn ~~ log_sd_pop
+
+"
+
+
+cp_sem_1 <- sem(
+  model = CP_sem_model_1,
+  data = sem_df,
+  estimator = "MLR"
+)
+
+summary(cp_sem_1, standardized = TRUE, fit.measures = TRUE, rsquare=T)
+sem1_r2 <- lavaan::inspect(cp_sem_1, "rsquare")
+sem1_r2
+
+sem1_params <- lavaan::parameterEstimates(cp_sem_1, standardized = TRUE)
+sem1_fit <- lavaan::fitMeasures(
+  cp_sem_1,
+  c("chisq", "df", "pvalue", "cfi", "rmsea", "srmr")
+)
+
+sem1_get_path <- function(lhs_term, rhs_term, op_term = "~") {
+  sem1_params |>
+    filter(lhs == lhs_term, op == op_term, rhs == rhs_term) |>
+    slice(1)
+}
+
+sem1_format_path <- function(path_row) {
+  paste0(
+    "β = ", sprintf("%.2f", path_row$std.all),
+    ", z = ", sprintf("%.2f", path_row$z),
+    ", *p* = ", format_p(path_row$pvalue)
+  )
+}
+
+sem1_rich_cv <- sem1_get_path("CV_perf_actual", "log_richness")
+sem1_cv_log_syn <- sem1_get_path("log_syn", "CV_perf_actual")
+sem1_cv_log_sd_pop <- sem1_get_path("log_sd_pop", "CV_perf_actual")
+sem1_log_syn_log_sd_biom <- sem1_get_path("log_sd_biom", "log_syn")
+sem1_log_sd_pop_log_sd_biom <- sem1_get_path("log_sd_biom", "log_sd_pop")
+sem1_rich_log_sd_biom <- sem1_get_path("log_sd_biom", "log_richness")
+
+sem1_rich_cv_text <- sem1_format_path(sem1_rich_cv)
+sem1_cv_log_syn_text <- sem1_format_path(sem1_cv_log_syn)
+sem1_cv_log_sd_pop_text <- sem1_format_path(sem1_cv_log_sd_pop)
+sem1_log_syn_log_sd_biom_text <- sem1_format_path(sem1_log_syn_log_sd_biom)
+sem1_log_sd_pop_log_sd_biom_text <- sem1_format_path(sem1_log_sd_pop_log_sd_biom)
+sem1_rich_log_sd_biom_text <- sem1_format_path(sem1_rich_log_sd_biom)
+
+sem1_chisq_text <- sprintf("%.2f", unname(sem1_fit["chisq"]))
+sem1_df_text <- sprintf("%.0f", unname(sem1_fit["df"]))
+sem1_fit_p_text <- format_p(unname(sem1_fit["pvalue"]))
+sem1_cfi_text <- sprintf("%.3f", unname(sem1_fit["cfi"]))
+sem1_rmsea_text <- sprintf("%.3f", unname(sem1_fit["rmsea"]))
+sem1_srmr_text <- sprintf("%.3f", unname(sem1_fit["srmr"]))
+
+sem1_r2_cv_text <- sprintf("%.2f", unname(sem1_r2["CV_perf_actual"]))
+sem1_r2_log_syn_text <- sprintf("%.2f", unname(sem1_r2["log_syn"]))
+sem1_r2_log_sd_pop_text <- sprintf("%.2f", unname(sem1_r2["log_sd_pop"]))
+sem1_r2_log_sd_biom_text <- sprintf("%.2f", unname(sem1_r2["log_sd_biom"]))
+
+sem1_sig_text <- function(p) {
+  case_when(
+    p < 0.001 ~ "***",
+    p < 0.01 ~ "**",
+    p < 0.05 ~ "*",
+    TRUE ~ "ns"
+  )
+}
+
+sem1_p_graph_text <- function(p) {
+  ifelse(p < 0.001, "p < 0.001", paste0("p = ", sprintf("%.3f", p)))
+}
+
+sem1_format_graph_path <- function(path_row, effect_label = "std. \u03b2") {
+  paste0(
+    effect_label, " = ", sprintf("%.2f", path_row$std.all), " ",
+    sem1_sig_text(path_row$pvalue)
+  )
+}
+
+sem1_sync_mean_cov <- sem1_get_path("log_syn", "log_sd_pop", "~~")
+
+sem1_nodes <- tribble(
+  ~name, ~x, ~y, ~label,
+  "CV_perf_actual", 0.1, 1.55, paste0("atop('Performance variability', atop(CV(CP[actual]), R^2 == ", sem1_r2_cv_text, "))"),
+  "log_richness", 0.1, 0.45, "atop('Species richness', log[10](S))",
+  "log_syn", 1.75, 1.55, paste0("atop('Biomass synchrony', atop(log[10](phi[biom]), R^2 == ", sem1_r2_log_syn_text, "))"),
+  "log_sd_pop", 1.75, 0.45, paste0("atop('Mean population variability', atop(log[10](bar(sigma)[biom]), R^2 == ", sem1_r2_log_sd_pop_text, "))"),
+  "log_sd_biom", 3.55, 1.0, paste0("atop('Community variability', atop(log[10](sigma[biom]), R^2 == ", sem1_r2_log_sd_biom_text, "))")
+)
+
+sem1_edges <- tribble(
+  ~x, ~y, ~xend, ~yend, ~label_x, ~label_y, ~path_type, ~label,
+  0.55, 1.55, 1.28, 1.55, 0.93, 1.77, "mechanistic", sem1_format_graph_path(sem1_cv_log_syn),
+  0.55, 1.42, 1.28, 0.56, 0.70, 0.92, "mechanistic", sem1_format_graph_path(sem1_cv_log_sd_pop),
+  2.20, 1.52, 3.05, 1.12, 2.64, 1.60, "mechanistic", sem1_format_graph_path(sem1_log_syn_log_sd_biom),
+  2.20, 0.48, 3.05, 0.88, 2.64, 0.40, "mechanistic", sem1_format_graph_path(sem1_log_sd_pop_log_sd_biom),
+  0.10, 0.66, 0.10, 1.33, -0.02, 1.02, "richness", sem1_format_graph_path(sem1_rich_cv)
+)
+
+sem1_rich_curve_edge <- tribble(
+  ~x, ~y, ~xend, ~yend, ~label_x, ~label_y, ~path_type, ~label,
+  0.55, 0.34, 3.08, 0.82, 2.25, 0.02, "richness", sem1_format_graph_path(sem1_rich_log_sd_biom)
+)
+
+sem1_edge_labels <- bind_rows(
+  sem1_edges |> select(label_x, label_y, label, path_type),
+  sem1_rich_curve_edge |> select(label_x, label_y, label, path_type)
+)
+
+sem1_cov_edge <- tibble(
+  x = 2.03,
+  y = 1.28,
+  xend = 2.03,
+  yend = 0.72,
+  label_x = 2.36,
+  label_y = 1.0,
+  label = sem1_format_graph_path(sem1_sync_mean_cov, "r")
+)
+
+modificationIndices(cp_sem_1)
+```
+
+```{r}
+#| include: false
+#| label: fig-5-construction
+
+hyp_communities <- tribble(
+  ~composition_name, ~community_label,
+  "PT", "P+T TS2",
+  "LT", "L+T TS2"
+)
+
+hyp_ts2 <- df_temp |>
+  transmute(time, temperature = TS2)
+
+hyp_perf <- hyp_communities |>
+  mutate(species = str_split(composition_name, "")) |>
+  unnest(species) |>
+  crossing(hyp_ts2) |>
+  mutate(predicted_performance = map2_dbl(species, temperature, ~ predict(
+    tpc_gams_design[[.x]],
+    newdata = tibble(temperature = .y)
+  )))
+
+hyp_values <- CPC_CV_df |>
+  ungroup() |>
+  filter(temp_series == "TS2", composition_name %in% hyp_communities$composition_name) |>
+  distinct(composition_name, synchrony_actual, pop_CVperf_actual) |>
+  left_join(hyp_communities, by = "composition_name") |>
+  mutate(
+    phi_perf_text = sprintf("%.2f", synchrony_actual),
+    mean_species_perf_var_text = sprintf("%.2f", pop_CVperf_actual),
+    label = paste0(
+      "Performance synchrony = ", phi_perf_text,
+      "\nMean species performance variability = ", mean_species_perf_var_text
+    )
+  )
+
+hyp_points <- CPC_CV_df |>
+  ungroup() |>
+  filter(temp_series == "TS2", composition_name %in% hyp_communities$composition_name) |>
+  left_join(hyp_communities, by = "composition_name")
+
+species_levels <- sort(unique(TPCs$species))
+hyp_plot_species <- unique(hyp_perf$species)
+
+m_pop_var <- lm(data = CPC_CV_df, mean_sd_pop ~ pop_CVperf_actual )
+sum_pop_var <- summary(m_pop_var)
+pop_var_beta_text <- formatC(coef(sum_pop_var)["pop_CVperf_actual", "Estimate"], format = "e", digits = 2)
+pop_var_p_text <- format_p(coef(sum_pop_var)["pop_CVperf_actual", "Pr(>|t|)"])
+pop_var_r2_text <- sprintf("%.2f", sum_pop_var$r.squared)
+
+m_syn <- lm(data = CPC_CV_df, synchrony ~ synchrony_actual)
+sum_syn <- summary(m_syn)
+syn_beta_text <- formatC(coef(sum_syn)["synchrony_actual", "Estimate"], format = "e", digits = 2)
+syn_p_text <- format_p(coef(sum_syn)["synchrony_actual", "Pr(>|t|)"])
+syn_r2_text <- sprintf("%.2f", sum_syn$r.squared)
+
+plot_hyp_perf_community <- function(target_composition) {
+  target_label <- hyp_communities |>
+    filter(composition_name == target_composition) |>
+    pull(community_label)
+  target_annotation <- hyp_values |>
+    filter(composition_name == target_composition) |>
+    pull(label)
+  target_species <- str_split(target_composition, "")[[1]]
+
+  ggplot(
+    hyp_perf |> filter(composition_name == target_composition),
+    aes(x = time, y = predicted_performance, color = species)
+  ) +
+    geom_line(linewidth = 1.6) +
+    geom_point(size = 3.1) +
+    scale_colour_viridis_d(
+      option = "magma",
+      end = 0.85,
+      limits = species_levels,
+      breaks = target_species
+    ) +
+    theme_minimal(base_size = 18) +
+    labs(
+      title = target_label,
+      subtitle = target_annotation,
+      x = "Time step",
+      y = expression("Predicted performance " * r[i](t)),
+      color = "Species"
+    ) +
+    theme(
+      plot.title = element_text(size = 22),
+      plot.subtitle = element_text(size = 16, lineheight = 1.05, margin = margin(t = 4, b = 8)),
+      legend.title = element_text(size = 18),
+      legend.text = element_text(size = 17)
+    )
+}
+
+plot_hyp_perf_pt <- plot_hyp_perf_community("PT")
+plot_hyp_perf_lt <- plot_hyp_perf_community("LT")
+
+plot_syn <- ggplot(data = CPC_CV_df, aes(x = synchrony_actual, y = synchrony)) +
+  geom_point(alpha = 0.35, size = 2.7, color = "black") +
+  geom_smooth(method = "lm", color = "black", linewidth = 1.3, alpha = 0.2) +
+  geom_point(
+    data = hyp_points,
+    aes(x = synchrony_actual, y = synchrony, color = community_label),
+    inherit.aes = FALSE,
+    size = 5.2,
+    alpha = 0.95
+  ) +
+  scale_color_manual(
+    name = "Example community",
+    values = c("P+T TS2" = "#2C7BB6", "L+T TS2" = "#D7191C")
+  ) +
+  theme_minimal(base_size = 18) +
+  ylab(expression(atop("Biomass synchrony", phi[biom]))) +
+  xlab(expression(atop("Performance synchrony", phi[perf]))) +
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
+  theme(
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 17)
+  )
+
+plot_pop_stab <- ggplot(data = CPC_CV_df, aes(x = pop_CVperf_actual, y = mean_sd_pop)) +
+  geom_point(alpha = 0.35, size = 2.7, color = "black") +
+  geom_smooth(method = "lm", color = "black", linewidth = 1.3, alpha = 0.2) +
+  geom_point(
+    data = hyp_points,
+    aes(
+      x = pop_CVperf_actual,
+      y = mean_sd_pop,
+      color = community_label
+    ),
+    inherit.aes = FALSE,
+    size = 5.2,
+    alpha = 0.95
+  ) +
+  scale_color_manual(
+    name = "Example community",
+    values = c("P+T TS2" = "#2C7BB6", "L+T TS2" = "#D7191C")
+  ) +
+  theme_minimal(base_size = 18) +
+  ylab(expression(atop("Mean population variability", bar(sigma)[biom]))) +
+  xlab(expression(atop("Mean species performance variability", widetilde(CV)[perf])))+
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
+  theme(
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 17)
+  )
+```
+
+```{r}
+#| label: fig-5
+#| fig-cap: "Mechanistic breakdown of performance variability. The left panels show predicted species performance $r_i(t)$ through TS2 for two example communities, P+T and L+T, using the species thermal performance GAMs. The right panels show how performance synchrony and mean species performance variability relate to biomass synchrony and mean population variability across all communities; larger coloured points mark the two example communities."
+#| fig-height: 10.25
+#| fig-width: 15
+#| fig-align: center
+#| fig-cap-location: bottom
+#| message: false
+#| warning: false
+
+((plot_hyp_perf_pt / plot_hyp_perf_lt) | (plot_syn / plot_pop_stab)) +
+  plot_layout(widths = c(1.45, 1)) +
+  plot_annotation(tag_levels = "A") &
+  theme(
+    legend.position = "bottom",
+    plot.tag = element_text(size = 29)
+  )
+
+
+
+
+
+```
+
+Across all communities, performance synchrony was positively related to synchrony of biomass fluctuations (@fig-5, panel C): communities with more synchronous performance also showed more synchronous biomass dynamics ($R^2=$ `r syn_r2_text`; β = `r syn_beta_text`, *p* = `r syn_p_text`). Mean species performance variability was positively related to mean population variability (@fig-5, panel D) ($R^2=$ `r pop_var_r2_text`; β = `r pop_var_beta_text`, *p* = `r pop_var_p_text`).
+
+Structural equation modelling (SEM) was used to test whether $CV(CP_{\text{actual}})$ was related to community variability through synchrony and mean population variability, while accounting for species richness. The model also included the association between species richness and intrinsic performance variability ($CV(CP_{\text{actual}})$). All variables were standardized; biomass synchrony, biomass variability terms, and richness were log-transformed so that the interactive effect between synchrony and mean population variability changed to additive.
+
+```{r}
+#| label: fig-sem1
+#| message: false
+#| warning: false
+#| fig-align: center
+#| fig-cap: Structural equation model for the mechanistic pathways from performance variability to community biomass variability. Path labels show standardized effects and significance codes, and node labels show the variable name, mathematical expression, and explained variance. Grey arrows show richness paths, and the dashed double-headed arrow shows the residual correlation between biomass synchrony and mean population variability.
+#| fig-cap-location: bottom
+#| fig-height: 5.4
+#| fig-width: 10
+
+ggplot() +
+  geom_segment(
+    data = sem1_edges |> filter(path_type == "richness"),
+    aes(x = x, y = y, xend = xend, yend = yend),
+    color = "#777777",
+    linewidth = 0.9,
+    lineend = "round",
+    arrow = grid::arrow(length = grid::unit(0.18, "cm"), type = "closed")
+  ) +
+  geom_curve(
+    data = sem1_rich_curve_edge,
+    aes(x = x, y = y, xend = xend, yend = yend),
+    curvature = 0.35,
+    color = "#777777",
+    linewidth = 0.9,
+    arrow = grid::arrow(length = grid::unit(0.18, "cm"), type = "closed")
+  ) +
+  geom_segment(
+    data = sem1_edges |> filter(path_type == "mechanistic"),
+    aes(x = x, y = y, xend = xend, yend = yend),
+    linewidth = 1.1,
+    lineend = "round",
+    arrow = grid::arrow(length = grid::unit(0.22, "cm"), type = "closed")
+  ) +
+  geom_curve(
+    data = sem1_cov_edge,
+    aes(x = x, y = y, xend = xend, yend = yend),
+    curvature = -0.55,
+    linewidth = 0.9,
+    linetype = "dashed",
+    arrow = grid::arrow(
+      ends = "both",
+      length = grid::unit(0.16, "cm"),
+      type = "closed"
+    )
+  ) +
+  geom_label(
+    data = sem1_edge_labels,
+    aes(x = label_x, y = label_y, label = label, color = path_type),
+    size = 3.45,
+    fill = "white",
+    linewidth = 0,
+    label.padding = grid::unit(0.12, "lines"),
+    lineheight = 1
+  ) +
+  geom_label(
+    data = sem1_cov_edge,
+    aes(x = label_x, y = label_y, label = label),
+    size = 3.45,
+    fill = "white",
+    linewidth = 0,
+    label.padding = grid::unit(0.12, "lines"),
+    lineheight = 1
+  ) +
+  geom_label(
+    data = sem1_nodes,
+    aes(x = x, y = y, label = label),
+    size = 4.6,
+    fill = "#F4F6F7",
+    linewidth = 0.35,
+    label.padding = grid::unit(0.35, "lines"),
+    lineheight = 1.05,
+    parse = TRUE
+  ) +
+  annotate(
+    "text",
+    x = 1.7,
+    y = -0.36,
+    label = "Significance codes: * p < 0.05, ** p < 0.01, *** p < 0.001, ns p >= 0.05",
+    size = 3.7
+  ) +
+  scale_color_manual(
+    values = c("mechanistic" = "black", "richness" = "#666666"),
+    guide = "none"
+  ) +
+  scale_x_continuous(limits = c(-0.65, 4.50), expand = c(0, 0)) +
+  scale_y_continuous(limits = c(-0.50, 2.05), expand = c(0, 0)) +
+  coord_cartesian(clip = "off") +
+  theme_void() +
+  theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+    plot.margin = margin(8, 8, 8, 8)
+  )
+```
+
+In the SEM, $CV(CP_{\text{actual}})$ was associated with both $\log_{10}$ biomass synchrony (`r sem1_cv_log_syn_text`; $R^2$ = `r sem1_r2_log_syn_text`) and $\log_{10}$ mean population biomass variability (`r sem1_cv_log_sd_pop_text`; $R^2$ = `r sem1_r2_log_sd_pop_text`) (@fig-sem1). Downstream, both biomass components were related to $\log_{10}(\sigma_{\text{biom}})$, with a larger standardized coefficient for the mean-population-variability pathway (`r sem1_log_sd_pop_log_sd_biom_text`) than for the synchrony pathway (`r sem1_log_syn_log_sd_biom_text`). Richness was related to $CV(CP_{\text{actual}})$ (`r sem1_rich_cv_text`; $R^2$ = `r sem1_r2_cv_text`). Together, the model explained all variation of $\log_{10}(\sigma_{\text{biom}})$ ($R^2$ = `r sem1_r2_log_sd_biom_text`) due to the mathematically exact relationship (see @eq-sigma-biom). Model fit statistics were $\chi^2$(`r sem1_df_text`) = `r sem1_chisq_text`, *p* = `r sem1_fit_p_text`, CFI = `r sem1_cfi_text`, RMSEA = `r sem1_rmsea_text`, and SRMR = `r sem1_srmr_text`.

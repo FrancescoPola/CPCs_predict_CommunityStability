@@ -1,0 +1,91 @@
+experiment:
+  name: CR2
+  description: "CR2: large continuous consumer-resource publication experiment with stochastic shared-to-private resource specialisation and compact summaries only."
+  random_seed: 20260618
+
+model:
+  type: consumer_resource_continuous
+
+community:
+  richness: 4
+  replicates: 3
+
+traits:
+  uptake_maximum:
+    mean: 0.06
+    range: 0
+    distribution: random_uniform
+  uptake_optimum:
+    mean: 16
+    range: 0
+    distribution: random_uniform
+  uptake_width:
+    mean: 1
+    range: 0.5
+    distribution: random_uniform
+  half_saturation:
+    mean: 100
+    range: 0
+    distribution: random_uniform
+
+resources:
+  use_mode: shared_to_private
+  active_resource: 1
+  private_use:
+    distribution: beta
+    mean: 0.01
+    range: 0
+    precision: 10
+  consumer_death_rate: 0.03
+  renewal_rate: 1
+  supply: 1000
+  conversion_efficiency: 1
+
+environment:
+  replicates: 3
+  sharing: same_per_replicate
+  temperature:
+    mean: 20
+    sd: 4
+    one_over_f_gamma: 1.5
+
+simulation:
+  burn_in_duration: 20
+  experiment_duration: 20000
+  consumer_immigration_rate: 0.01
+  initial_consumer_total_abundance: 30
+  resource_initial_value: 1000
+  temperature_interpolation: linear
+  ode:
+    method: lsoda
+    rtol: 1e-6
+    atol: 1e-8
+    max_step: 1
+  blowup_threshold: 1e12
+  negative_tolerance: 1e-8
+  initial_abundance_seed_base: 4242
+
+output:
+  save_dynamics: false
+  save_resources: false
+  dynamics_save_every: 100
+  resources_save_every: 100
+  summary_checkpoint_every: 10
+  runtime_update_every: 100
+  simulation_progress: true
+  environment_progress: true
+
+parallel:
+  workers: available_cores_minus_1
+  environments: true
+  simulations: true
+  community_measures: true
+
+treatments:
+  values:
+    community.richness: [4, 8, 12]
+    traits.uptake_optimum.mean: [16, 20, 24]
+    traits.uptake_optimum.range: [0, 2, 4]
+    traits.uptake_width.mean: [1, 2, 3]
+    traits.uptake_width.range: [0.5, 1.25]
+    resources.private_use.mean: [0.01, 0.25, 0.5, 0.75, 0.99]

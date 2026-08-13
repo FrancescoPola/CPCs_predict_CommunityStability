@@ -1,53 +1,117 @@
-Community performance curves predict community stability despite interaction effects
+# Community performance curves predict community stability despite interaction effects
 
-This repository contains data, analysis, and supplementary materials for the manuscript titled "Community performance curves predict community stability despite interaction effects".
+This repository contains the data, code, figures, and supplementary information for the manuscript **"Community performance curves predict community stability despite interaction effects"**.
 
-IMPORTANT: to run the simulations you need to install the newly developed package "community.simulator", available here: https://github.com/opetchey/community.simulator
+The active repository is organised around three parts of the study:
 
-Repository structure:
+1. a literature review;
+2. four simulation experiments;
+3. a purpose-designed empirical ciliate microcosm experiment.
 
-- simulation_study
-  - organized by simulation run rather than by file type.
-  - `final`: full simulation run with `code`, `data`, and `reports` subfolders.
-  - `final_small`: reduced simulation run for reviewers with `code`, `data`, and `reports` subfolders.
-  - `plot_effect_interactions`: subset of the simulation outputs used to plot the effects of interspecific interactions on species dynamics (Figure S4), also arranged into `code`, `data`, and `reports`.
-    This is a curated slice of the broader simulation study used for figures that compare otherwise similar communities under different interaction strengths, so the direct effect of interactions on community dynamics can be visualized clearly.
-  - each simulation-run folder contains its own `README.md` describing the purpose of that run and the files in it.
+The repository also contains a single Quarto file for reproducing the manuscript figures.
 
-- empirical_study
-  - code/empirical_example.R: code for reproducing the empirical example reported in the manuscript.
-  - data: datasets required by the empirical analysis, including the derived summary table.
+## Repository Structure
 
-- literature_review
-  - data/literature_file.xls: screening and extraction file for the literature review.
+```text
+CPCs_predict_CommunityStability/
+├── literature_review/
+├── manuscript figure/
+├── new_empirical_study/
+├── publication_experiments/
+├── old/
+├── Supplementary_Info_1.html
+├── Supplementary_Info_2.html
+└── Supplementary_Info_3.html
+```
 
-- reports
-  - extended_results.qmd and extended_results.html: integrated reproducible report spanning the simulation study, empirical study, and literature review.
+## Main Folders
 
-Simulation scripts:
+### `literature_review/`
 
-- simulation_study/final/code/run_simulations_complete.R runs the full simulation study used in the manuscript.
-- simulation_study/final_small/code/run_simulations_small.R runs a reduced version for quick checks and reviewer use.
+Contains the literature-review data and supplementary report.
 
-Simulation design files:
+- `data/literature_file.xls`: screening and extraction table for the literature review.
+- `literature_review_supplement.qmd`: Quarto source for the literature-review supplement.
+- `literature_review_supplement.html`: rendered HTML supplement.
 
-- `simulation_study/final/data/final_v0.7.json` is the design file for the full manuscript simulation run.
-- `simulation_study/final_small/data/final_small_v0.7.json` is the design file for the reduced reviewer-oriented run.
-- `simulation_study/plot_effect_interactions/data/plot_effect_interactions_v0.7.json` is the design file for the interaction-effects subset.
+Render with:
 
-The file `final_small_v0.7.json` is a reduced simulation design containing only two species-richness levels (2 and 4), a narrow range of thermal-optimum treatments (means 16-18 C and ranges 6-8 C), two levels of performance-curve breadth (means 6-8 and ranges 0-2), and two community and environmental replicates.
+```bash
+cd literature_review
+quarto render literature_review_supplement.qmd
+```
 
-In contrast, `final_v0.7.json` encodes the full simulation design used in the manuscript: four richness levels (2, 4, 8, 16), a broader range of thermal-optimum treatments (means 16-24 C and ranges 6-14 C), an expanded set of performance-curve breadths (means 6-14 and ranges 0-10), and five community by five environmental replicates.
+### `publication_experiments/`
 
-Note on omitted full-run files:
+Contains the simulation study supplement and the publication-ready simulation outputs.
 
-- Not all output files for `simulation_study/final` are included in this GitHub repository because some are too large to store conveniently here.
-- The files currently missing from `simulation_study/final/data` are:
-  - `dynamics.db`
-  - `temporal_derivs.db`
-  - `arbitrary_derivs.db`
-  - `delta_igr.db`
-- All these files are not computationally heavy to generate, except for `dynamics.db`, which is the only one essential for reproducing the results and it is 
-  available from a cloud storage location to be added here (waiting for Zenodo approval uploading large data set).
+- `CPC_supplementary_information_simulation_clean.qmd`: Quarto source for the simulation supplement.
+- `CPC_supplementary_information_simulation_clean.html`: rendered simulation supplement.
+- `run_all.R`: script for rerunning the four publication simulation experiments.
+- `README.md`: detailed simulation-folder README.
+- `data/`: simulation inputs and outputs used by the report.
 
-LICENSE.md: MIT license
+The active simulation runs are:
+
+| Folder | Framework | Description |
+| --- | --- | --- |
+| `data/LV1` | Lotka-Volterra | Asymmetric uniform interaction-strength gradient |
+| `data/LV2` | Lotka-Volterra | Symmetric log-normal interaction-strength gradient |
+| `data/CR1` | Consumer-resource | Deterministic shared-resource gradient |
+| `data/CR2` | Consumer-resource | Stochastic shared-resource gradient |
+
+Each simulation folder contains the corresponding YAML specification, `community_measures.RDS`, `experiment_table.RDS`, `population_summaries.RDS`, `simulation_summaries.RDS`, `temperatures.db`, and run logs.
+
+
+To rerun the simulation experiments, first install the R package `community.simulator`
+
+
+### `new_empirical_study/`
+
+Contains the empirical ciliate microcosm analysis and report.
+
+- `data/combined_timeseries_df.csv`: community experiment time-series data.
+- `data/TPC_timeseries_df.csv`: monoculture thermal-performance experiment data.
+- `Combined_TPC_CPC_Report.qmd`: Quarto source for the empirical supplement.
+- `Combined_TPC_CPC_Report.html`: rendered empirical supplement.
+
+
+### `manuscript figure/`
+
+Contains the reproducible figure file for the main manuscript.
+
+- `manuscript_figures.qmd`: Quarto source for the manuscript figures.
+- `manuscript_figures.html`: rendered figure document.
+
+
+This file reproduces the conceptual figures, literature-review figure, simulation figure, empirical predictor figure, and empirical SEM figure used for the manuscript.
+
+### `old/`
+
+Archive of earlier analyses, reports, and exploratory folders. These files are retained for project history but are not the active source for the current manuscript figures or supplements.
+
+## Top-Level Supplement Files
+
+The root folder also contains rendered copies of the supplementary information:
+
+- `Supplementary_Info_1.html`: literature-review supplement.
+- `Supplementary_Info_2.html`: simulation supplement.
+- `Supplementary_Info_3.html`: empirical-study supplement.
+
+The source files for these supplements are in the folders described above.
+
+
+## Recommended Use
+
+For reproducing the current manuscript materials, use the active folders in this order:
+
+1. Render `literature_review/literature_review_supplement.qmd`.
+2. Render `publication_experiments/CPC_supplementary_information_simulation_clean.qmd`.
+3. Render `new_empirical_study/Combined_TPC_CPC_Report.qmd`.
+4. Render `manuscript figure/manuscript_figures.qmd`.
+
+The Quarto documents read the data from the current `data/` folders and should run without using the archived `old/` directory.
+
+## License
+
+This repository is released under the MIT license. See `LICENSE.md`.

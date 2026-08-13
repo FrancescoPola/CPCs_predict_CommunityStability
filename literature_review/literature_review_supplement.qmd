@@ -1,0 +1,177 @@
+---
+title: "Supplementary Information 1 - Literature Review"
+subtitle: "Search strategy, screening criteria, and summary of retained studies"
+authors: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Owen L. Petchey"
+editor: source
+execute:
+  echo: false
+  warning: false
+  message: false
+  cache: false
+format:
+  html:
+    page-layout: full
+    html-math-method: mathml
+    toc: true
+    toc-location: left
+    toc-depth: 2
+    number-sections: true
+    embed-resources: true
+    code-fold: true
+    code-summary: "Show code"
+crossref:
+  fig-title: Figure S
+  tbl-title: Table S
+  fig-prefix: Figure S
+  tbl-prefix: Table S
+---
+
+```{r setup}
+library(dplyr)
+library(forcats)
+library(ggalluvial)
+library(ggplot2)
+library(patchwork)
+library(readxl)
+library(viridis)
+
+repo_root <- "/Users/francesco/Documents/GitHub/CPCs_predict_CommunityStability"
+literature_file_path <- file.path(repo_root, "literature_review", "data", "literature_file.xls")
+```
+
+# Methods
+
+## Literature Review
+
+We searched the Web of Science Core Collection on 26 November 2025 for studies linking temporal stability, interspecific interactions, and species-specific environmental responses. The search covered titles, abstracts, and author keywords using the following Topic Search (TS):
+
+```text
+TS = (("temporal stabilit*" OR "temporal variabilit*")
+AND ("interaction*")
+AND ("environmental response*" OR "environmental variabilit*"
+OR "abiotic factor*" OR "species-environment relationship*"
+OR "response diversity" OR "species* performance*"
+OR "species respons*" OR "species environment* respons*"))
+```
+
+Wildcards captured word stems. We retained peer-reviewed research articles, meta-analyses, and reviews, imposed no date restriction, and excluded conference proceedings, editorials, book chapters, theses, and non-English records.
+
+Records were exported to a reference manager and deduplicated. Two reviewers independently screened titles and abstracts against three criteria: studies had to (i) analyse temporal stability or variability of a community or ecosystem property, (ii) evaluate or discuss interspecific interactions, and (iii) address species-specific environmental responses or related constructs, including response diversity, species-environment relationships, performance curves, or traits linked to abiotic drivers. We excluded studies restricted to spatial stability or environmental gradients without temporal dynamics. Full texts were then screened to confirm eligibility and extract data; disagreements were resolved by discussion.
+
+For each study, we recorded bibliographic information, system and study type, stability metric, representation of interactions, treatment of species-specific responses, and the mechanism judged to prevail when both were considered important. We summarised categorical variables as counts and proportions and visualised associations among study type, species-specific responses, and interactions with Sankey diagrams.
+
+# Results
+
+## Literature Review
+
+The review retained only 12 studies. Ten concluded that species-specific environmental responses were informative for temporal stability and nine identified interactions as important; seven considered both. Of those seven, five judged species-specific responses to be the prevailing mechanism and two judged interactions to prevail.
+
+```{r}
+#| label: fig-literature-review
+#| fig-cap: "Systematic review: overview of study characteristics and prevailing mechanisms in the literature. The upper Sankey diagram illustrates the associations between study type, whether species-specific responses were considered important for stability, and whether interactions were considered important for stability. Colours indicate organism groups. The lower bar plot summarizes which mechanism was considered prevailing among studies that concluded both species-specific responses and interactions were important in the Sankey diagram, grouped by study type."
+#| fig-width: 14
+#| fig-height: 8
+#| fig-cap-location: bottom
+
+literature_file <- read_excel(literature_file_path, sheet = "Sheet1")
+
+df_inc <- literature_file |>
+  filter(`included after first screening` == "yes") |>
+  select(
+    included_after_first_screening = `included after first screening`,
+    included_after_reading = `included after reading`,
+    type_of_study = `type of study`,
+    species_specific_responses = `species specific responses useful?`,
+    interactions_useful = `interactions useful?`,
+    ecosystem,
+    organism_group = `organism group`,
+    prevailing_mechanism = `prevailing mechanism`
+  ) |>
+  mutate(across(everything(), ~ forcats::fct_na_value_to_level(as.factor(.x), "Unknown"))) |>
+  filter(included_after_reading == "yes")
+
+shared_theme <- theme_minimal(base_size = 16, base_family = "sans") +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    axis.title = element_text(size = 15),
+    axis.text = element_text(size = 13),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 12),
+    legend.position = "bottom"
+  )
+
+organism_cols <- viridis(
+  n = length(unique(df_inc$organism_group)),
+  option = "magma",
+  begin = 0.35,
+  end = 0.85
+)
+
+alluvial <- ggplot(
+  df_inc,
+  aes(
+    axis3 = type_of_study,
+    axis4 = species_specific_responses,
+    axis5 = interactions_useful,
+    y = 1
+  )
+) +
+  geom_alluvium(aes(fill = organism_group), alpha = 0.85) +
+  geom_stratum(color = "grey70") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3.4) +
+  scale_x_discrete(
+    limits = c("Study type", "Species-specific?", "Interactions?"),
+    labels = c(
+      "Type of study",
+      "Species-specific\nresponses useful?",
+      "Interactions\nuseful?"
+    )
+  ) +
+  scale_fill_manual(
+    values = organism_cols,
+    guide = guide_legend(nrow = 2, byrow = TRUE)
+  ) +
+  labs(
+    x = NULL,
+    y = "Number of studies",
+    fill = "Organism group"
+  ) +
+  scale_y_continuous(limits = c(0, 12), breaks = seq(0, 12, 2)) +
+  shared_theme
+
+df_yes_yes <- df_inc |>
+  filter(
+    species_specific_responses == "yes",
+    interactions_useful == "yes"
+  )
+
+study_cols <- viridis(
+  n = length(unique(df_yes_yes$type_of_study)),
+  option = "mako",
+  begin = 0.35,
+  end = 0.85
+)
+
+p_prev_mech_by_study <- ggplot(
+  df_yes_yes,
+  aes(x = prevailing_mechanism, fill = type_of_study)
+) +
+  geom_bar(position = "stack", alpha = 0.85) +
+  coord_flip() +
+  scale_fill_manual(
+    values = study_cols,
+    guide = guide_legend(nrow = 1, byrow = TRUE)
+  ) +
+  labs(
+    title = "Prevailing mechanisms",
+    x = "Prevailing mechanism",
+    y = "Number of studies",
+    fill = "Study type"
+  ) +
+  shared_theme
+
+alluvial / p_prev_mech_by_study +
+  plot_layout(heights = c(2.8, 1), guides = "keep") +
+  plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  theme(legend.position = "bottom")
+```
