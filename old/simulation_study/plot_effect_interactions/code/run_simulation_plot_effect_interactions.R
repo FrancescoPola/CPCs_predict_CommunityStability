@@ -45,34 +45,6 @@ if (!all(file.exists(required_outputs))) {
   )
 }
 
-## Additional derivative outputs used by the interaction-effects figure.
-temporal_derivs_db <- file.path(experiment_folder, "temporal_derivs.db")
-arbitrary_derivs_db <- file.path(experiment_folder, "arbitrary_derivs.db")
-delta_igr_db <- file.path(experiment_folder, "delta_igr.db")
-
-if (!file.exists(temporal_derivs_db)) {
-  suppressMessages(
-    get_temporal_derivatives(
-      experiment_folder,
-      experiment_design_filename,
-      every_t = 10
-    )
-  )
-}
-
-if (!file.exists(arbitrary_derivs_db)) {
-  suppressMessages(
-    get_arbitrary_derivatives(experiment_folder, experiment_design_filename)
-  )
-}
-
-if (!file.exists(delta_igr_db)) {
-  get_delta_igr(experiment_folder, experiment_design_filename, every_t = 1)
-}
 
 message("Interaction-effects subset workflow complete.")
 message("Core outputs are in simulation_study/plot_effect_interactions/data")
-message("Note: this script recreates the standard workflow and derivative files.")
-message("Files such as imbalance.db or community_measures_new.RDS are preserved if")
-message("already present, but no helper was found in the installed package to")
-message("rebuild them directly.")

@@ -49,17 +49,6 @@ create_environments(experiment_folder, experiment_design_filename)
 ## Simulate dynamics
 simulate_dynamics(experiment_folder, experiment_design_filename)
 
-## Get temporal derivatives
-get_temporal_derivatives(experiment_folder, experiment_design_filename, every_t = 10) %>%
-  suppressMessages()
-
-## Get arbitrary derivatives
-get_arbitrary_derivatives(experiment_folder, experiment_design_filename) %>%
-  suppressMessages()
-
-## Get delta IGR
-get_delta_igr(experiment_folder, experiment_design_filename, every_t = 1)
-
 ## Get the community measures
 get_community_measures(experiment_folder, experiment_design_filename)
 

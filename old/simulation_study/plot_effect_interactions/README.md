@@ -18,9 +18,6 @@ Folder structure:
   - `community_measures.RDS`: community summary metrics.
   - `temperatures.db`: simulated temperature time series.
   - `dynamics.db`: simulated species dynamics.
-  - `temporal_derivs.db`: temporal derivative outputs.
-  - `arbitrary_derivs.db`: arbitrary derivative outputs.
-  - `delta_igr.db`: delta intrinsic-growth-rate outputs.
 
 - `reports`
   - `analysis.qmd`: exploratory report for the interaction-effects subset, including summary plots and the paired-case interaction comparison used in the manuscript workflow.
