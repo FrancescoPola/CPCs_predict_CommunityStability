@@ -1343,6 +1343,7 @@ in which interaction strengths can vary with temperature.
 ```{r cp-generalized-publication-data, include=FALSE}
 publication_link_data <- bind_rows(
   analysis_data |>
+    filter(framework == "Lotka-Volterra") |>
     transmute(
       model_type = "Lotka--Volterra",
       framework,
@@ -1350,10 +1351,10 @@ publication_link_data <- bind_rows(
       experiment_label,
       link_function = "Identity link",
       CP_CV = raw_cpc,
-      community_stability = 1 / stability,
-      community_instability = stability
+      community_cv = stability
     ),
   analysis_data |>
+    filter(framework == "Lotka-Volterra") |>
     transmute(
       model_type = "Lotka--Volterra",
       framework,
@@ -1361,10 +1362,10 @@ publication_link_data <- bind_rows(
       experiment_label,
       link_function = "Binary link",
       CP_CV = viability_binary_cpc,
-      community_stability = 1 / stability,
-      community_instability = stability
+      community_cv = stability
     ),
   analysis_data |>
+    filter(framework == "Consumer-resource") |>
     transmute(
       model_type = "Consumer-resource",
       framework,
@@ -1372,10 +1373,10 @@ publication_link_data <- bind_rows(
       experiment_label,
       link_function = "Identity link",
       CP_CV = raw_cpc,
-      community_stability = 1 / stability,
-      community_instability = stability
+      community_cv = stability
     ),
   analysis_data |>
+    filter(framework == "Consumer-resource") |>
     transmute(
       model_type = "Consumer-resource",
       framework,
@@ -1383,11 +1384,10 @@ publication_link_data <- bind_rows(
       experiment_label,
       link_function = "Binary link",
       CP_CV = viability_binary_cpc,
-      community_stability = 1 / stability,
-      community_instability = stability
+      community_cv = stability
     )
 ) |>
-  filter(is.finite(CP_CV), is.finite(community_stability), is.finite(community_instability)) |>
+  filter(is.finite(CP_CV), is.finite(community_cv)) |>
   mutate(
     model_type = factor(model_type, levels = c("Lotka--Volterra", "Consumer-resource")),
     link_function = factor(link_function, levels = c("Identity link", "Binary link"))
@@ -1398,10 +1398,10 @@ publication_link_summaries <- publication_link_data |>
   summarise(
     n = n(),
     cp_cv_sd = sd(CP_CV),
-    stability_sd = sd(community_stability),
+    community_cv_sd = sd(community_cv),
     r_squared = ifelse(
-      n > 2 && cp_cv_sd > 0 && stability_sd > 0,
-      summary(lm(community_stability ~ CP_CV))$r.squared,
+      n > 2 && cp_cv_sd > 0 && community_cv_sd > 0,
+      summary(lm(community_cv ~ CP_CV))$r.squared,
       NA_real_
     ),
     .groups = "drop"
@@ -1420,7 +1420,7 @@ plot_model_link_case <- function(data, model, link) {
   plot_summary_one <- publication_link_summaries |>
     filter(model_type == model, link_function == link)
 
-  plot <- ggplot(plot_data_one, aes(CP_CV, community_stability, colour = experiment_label)) +
+  plot <- ggplot(plot_data_one, aes(CP_CV, community_cv, colour = experiment_label)) +
     geom_point(alpha = 0.32, size = 1.4) +
     geom_text(
       data = plot_summary_one,
@@ -1437,7 +1437,7 @@ plot_model_link_case <- function(data, model, link) {
     labs(
       title = paste(model, "-", link),
       x = expression(CV(CP)),
-      y = "Community stability, 1 / CV(total abundance)"
+      y = "Community variability, CV(total abundance)"
     ) +
     theme_figure(12)
 
@@ -1456,10 +1456,10 @@ plot_model_link_case_filtered <- function(data, model, link, max_cp_cv) {
     summarise(
       n = n(),
       cp_cv_sd = sd(CP_CV),
-      stability_sd = sd(community_stability),
+      community_cv_sd = sd(community_cv),
       r_squared = ifelse(
-        n > 2 && cp_cv_sd > 0 && stability_sd > 0,
-        summary(lm(community_stability ~ CP_CV))$r.squared,
+        n > 2 && cp_cv_sd > 0 && community_cv_sd > 0,
+        summary(lm(community_cv ~ CP_CV))$r.squared,
         NA_real_
       ),
       .groups = "drop"
@@ -1472,7 +1472,7 @@ plot_model_link_case_filtered <- function(data, model, link, max_cp_cv) {
       )
     )
 
-  plot <- ggplot(plot_data_one, aes(CP_CV, community_stability, colour = experiment_label)) +
+  plot <- ggplot(plot_data_one, aes(CP_CV, community_cv, colour = experiment_label)) +
     geom_point(alpha = 0.32, size = 1.4) +
     geom_text(
       data = plot_summary_one,
@@ -1489,7 +1489,7 @@ plot_model_link_case_filtered <- function(data, model, link, max_cp_cv) {
     labs(
       title = paste0(model, " - ", link, " (CV(CP) <= ", max_cp_cv, ")"),
       x = expression(CV(CP)),
-      y = "Community stability, 1 / CV(total abundance)"
+      y = "Community variability, CV(total abundance)"
     ) +
     theme_figure(12)
 
@@ -1687,10 +1687,8 @@ performance-to-abundance link to differ among models.
 ### Model-Link Cases
 
 The figure panels below apply this construction to the simulation outputs.
-Stability is shown as $1 / CV_{\text{total abundance}}$. The x-axis is $CV(CP)$
-constructed under each model-link combination. The main simulation analyses in
-@fig-main-simulation-results use the inverse response, total-abundance
-instability.
+Total-abundance variability is shown as $CV_{\text{total abundance}}$. The
+x-axis is $CV(CP)$ constructed under each model-link combination.
 
 For the Lotka-Volterra model, the identity-link $CP$ comes directly from the
 community-measures output. The binary-link $CP$ uses the 
@@ -1702,7 +1700,7 @@ community-measures output.
 
 ```{r}
 #| label: fig-lv-identity-link
-#| fig-cap: "Lotka-Volterra identity-link $CP$. Points show simulation cases, the x-axis shows $CV(CP)$ based on raw community performance, and the y-axis shows community stability as $1 / CV(\\text{total abundance})$. The identity link is the model-consistent $CP$ construction for the Lotka-Volterra simulations."
+#| fig-cap: "Lotka-Volterra identity-link $CP$. Points show simulation cases, the x-axis shows $CV(CP)$ based on raw community performance, and the y-axis shows total-abundance variability as $CV(\\text{total abundance})$. The identity link is the model-consistent $CP$ construction for the Lotka-Volterra simulations."
 #| fig-width: 7
 #| fig-height: 5
 #| fig-cap-location: bottom
@@ -1965,9 +1963,9 @@ synchrony_treatment_summary <- synchrony_data |>
 
 synchrony_treatment_table <- synchrony_treatment_summary |>
   mutate(r2 = round(r2, 3)) |>
-  select(framework, treatment = treatment_plot, synchrony_predictor, r2) |>
+  select(framework, `interaction/resource-sharing treatment` = treatment_plot, synchrony_predictor, r2) |>
   pivot_wider(names_from = synchrony_predictor, values_from = r2) |>
-  arrange(framework, treatment)
+  arrange(framework, `interaction/resource-sharing treatment`)
 
 get_sync_value <- function(framework_name, predictor_name, column = "r2") {
   synchrony_summary |>
@@ -1991,7 +1989,7 @@ synchrony_plot <- synchrony_data |>
     size = 3.5
   ) +
   facet_grid(framework_label ~ synchrony_predictor) +
-  scale_colour_viridis_d(option = "C", end = 0.9, name = "Treatment") +
+  scale_colour_viridis_d(option = "C", end = 0.9, name = "Interaction/resource-sharing treatment") +
   coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
   labs(
     x = expression(atop("Performance synchrony", phi[perf])),
