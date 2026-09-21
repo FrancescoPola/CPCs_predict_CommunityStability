@@ -1,0 +1,596 @@
+---
+title: "Supplementary 4: Why community performance predicts community stability (Lotka-Volterra derivation)"
+author:
+  - name: "[Author names]"
+date: last-modified
+format:
+  html:
+    toc: true
+    number-sections: true
+    html-math-method: mathjax
+    embed-resources: true
+  pdf:
+    toc: true
+    number-sections: true
+    keep-tex: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+# Overview
+
+This derivation provides a mechanistic reason that temporal variation in CP should contain information about temporal variation in total community biomass, together with the conditions that make this prediction closer to a calibrated equality.
+
+The derivation shows that:
+
+$$
+\operatorname{CV}_{B}^2
+\approx\frac{\operatorname{CV}_{CP}^2-(1-p)\operatorname{CV}_{\mathrm{sp}}^2}{p}.
+$$ {#eq-predictive-form}
+
+In this equation:
+
+* $\operatorname{CV}_{B}^2$ is the squared coefficient of variation of total community abundance. This is the square of the **community-level variability**, a common measure of **the inverse of community stability**.
+* $\operatorname{CV}_{CP}^2$ is the squared coefficient of variation of community performance. This is the square of **the response-diversity measure** (CV CP) calculated from the species performance curves.
+* $\operatorname{CV}_{\mathrm{sp}}^2$ is the weighted squared coefficient of variation of species abundances: 
+
+$$
+\operatorname{CV}_{\mathrm{sp}}^2
+=
+\sum_{i=1}^{m}\pi_i \operatorname{CV}^2(N_i)
+$$
+
+and
+
+$$\pi_i
+=
+\frac{\langle N_i\rangle^2}
+{\sum_{j=1}^{m}\langle N_j\rangle^2}
+$$
+
+where $m$ is the number of species in the community, and $N_i$ is the abundance of species $i$.
+
+* $p$ is a weight that depends on the mean structure and heterogeneity of the interaction matrix. When interaction heterogeneity is small relative to the average interaction structure, $p$ is close to one. In contrast, when interaction heterogeneity is large relative to the average interaction structure, $p$ is smaller.
+
+Therefore, interspecific interactions, via $p$, control how strongly species-level abundance variability contributes to the relationship between CP variability and total community abundance variability. When pair-specific interaction heterogeneity is small, $p$ is close to one and the relationship between $\operatorname{CV}_{CP}^2$ and $\operatorname{CV}_{B}^2$ is nearly one-to-one. When pair-specific interaction heterogeneity is large, $p$ is smaller and species-level abundance variability contributes more strongly.
+
+Thus, if an interaction matrix is well approximated by its mean structure, the variability of community performance should be a good predictor of the variability of total community abundance. If the interaction matrix is highly heterogeneous, species-level abundance variability should play a larger role.
+
+The derivation follows. It is conditional on positive and bounded population trajectories, weak immigration, separation between environmental and population-dynamic timescales, and a statistical approximation for the interaction matrix.
+
+The derivation is followed by connection to the LV publication experiments, in particular showing the interaction distributions in the experiments, and the realised values of $p$ in the simulated communities. We show that in the simulations even when interactions and their effects on population dynamics are strong, the realised $p$ values are high, meaning that the average interaction structure dominates over pair-specific heterogeneity. This is consistent with the strong CP--biomass relationship observed in the simulations.
+
+# Temporal variability of an aggregate quantity
+
+This section establishes useful terms for describing variability. Ecologically, community performance and total biomass are both aggregate quantities: they combine contributions from several species. Before asking why CP should predict biomass stability, we need a way to express the variability of a community-level sum in terms of the variability and covariation of its species-level parts.
+
+For a time-dependent quantity $X(t)$ observed over an interval of length $\mathcal{T}$, define the temporal expectation
+
+$$
+\langle X^q\rangle
+=\frac{1}{\mathcal{T}}\int_0^{\mathcal{T}}X(t)^q\,\mathrm{d}t.
+$$ {#eq-temporal-moment}
+
+The squared coefficient of variation is
+
+$$
+\operatorname{CV}^2(X)
+=\frac{\operatorname{Var}(X)}{\langle X\rangle^2}
+=\frac{\langle X^2\rangle}{\langle X\rangle^2}-1.
+$$ {#eq-cv-definition}
+
+Suppose that $X(t)$ is the sum of $m$ species-level quantities $y_i(t)$:
+
+$$
+X(t)=\sum_{i=1}^{m}y_i(t).
+$$ {#eq-aggregate-sum}
+
+Its first two temporal moments are
+
+$$
+\langle X\rangle=\sum_{i=1}^{m}\langle y_i\rangle
+$$ {#eq-first-moment}
+
+and
+
+$$
+\langle X^2\rangle
+=\sum_{i=1}^{m}\sum_{j=1}^{m}\langle y_i y_j\rangle.
+$$ {#eq-second-moment}
+
+Let $\mathbf y=(y_1,\ldots,y_m)^\mathsf{T}$ and let $\mathbf 1$ denote an $m$-vector of ones. It follows that
+
+$$
+\operatorname{CV}^2(X)
+=
+\frac{\mathbf 1^\mathsf{T}\langle\mathbf y\mathbf y^\mathsf{T}\rangle\mathbf 1}
+{\mathbf 1^\mathsf{T}\langle\mathbf y\rangle\langle\mathbf y\rangle^\mathsf{T}\mathbf 1}-1.
+$$ {#eq-cv-vector}
+
+The same expression is obtained if $X$ is defined as a species mean because multiplying a time series by the constant $1/m$ does not change its coefficient of variation.
+
+Applying @eq-cv-vector with $y_i(t)=\widetilde r_i(T_t)$ gives
+
+$$
+\operatorname{CV}_{CP}^2
+=
+\frac{\mathbf 1^\mathsf{T}\langle\widetilde{\mathbf r}\widetilde{\mathbf r}^\mathsf{T}\rangle\mathbf 1}
+{\mathbf 1^\mathsf{T}\langle\widetilde{\mathbf r}\rangle\langle\widetilde{\mathbf r}\rangle^\mathsf{T}\mathbf 1}-1.
+$$ {#eq-cv-cp}
+
+Thus, CP variability depends on both the temporal variances of individual species' performances and their temporal covariances.
+
+# Relationship to the continuous-time LV simulation model
+
+This section connects the statistical quantity CP to the population dynamics used in the simulations. The aim is to show that, in the continuous-time LV model, CP is not an external summary imposed after the fact: it is built from the same temperature-dependent growth-rate terms that drive changes in abundance.
+
+For species $i$, the simulation model is
+
+$$
+\frac{\mathrm dN_i}{\mathrm dt}
+=N_i(t)\widetilde r_i(T_t)
+\left[1-\frac{\sum_{j=1}^{m}\alpha_{ij}N_j(t)}{K_i(T_t)}\right]+I,
+$$ {#eq-simulation-lv}
+
+where
+
+$$
+\widetilde r_i(T_t)=b_i(T_t)-d_i(T_t)+\epsilon
+$$ {#eq-net-growth}
+
+and
+
+$$
+K_i(T_t)=\frac{\widetilde r_i(T_t)}{\beta+\delta}.
+$$ {#eq-carrying-capacity}
+
+Substitution of @eq-carrying-capacity into @eq-simulation-lv gives
+
+$$
+\frac{\mathrm dN_i}{\mathrm dt}
+=N_i(t)\left[\widetilde r_i(T_t)-(\beta+\delta)\sum_{j=1}^{m}\alpha_{ij}N_j(t)\right]+I.
+$$ {#eq-simulation-expanded}
+
+Defining the effective interaction coefficients
+
+$$
+A_{ij}=(\beta+\delta)\alpha_{ij}
+$$ {#eq-a-definition}
+
+produces
+
+$$
+\frac{\mathrm dN_i}{\mathrm dt}
+=N_i(t)\left[\widetilde r_i(T_t)-\sum_{j=1}^{m}A_{ij}N_j(t)\right]+I.
+$$ {#eq-standard-lv-immigration}
+
+Thus, apart from immigration, CP is constructed from the environmental growth-rate terms that directly drive abundance dynamics. Under @eq-carrying-capacity, the temperature dependence assigned to $K_i$ does not create a second independent pathway: it yields the fixed effective interaction coefficients in @eq-a-definition.
+
+# Long-run mean relationship
+
+This section explains why persistent populations must, on average, balance growth against interaction pressure. This is useful because it turns the dynamic LV equation into a relationship between mean environmental performance and mean abundances, giving the first bridge from species performance curves to community biomass.
+
+We first consider $I=0$. For positive trajectories, division of @eq-standard-lv-immigration by $N_i$ gives
+
+$$
+\frac{\mathrm d\log N_i}{\mathrm dt}
+=\widetilde r_i(T_t)-\sum_{j=1}^{m}A_{ij}N_j(t).
+$$ {#eq-log-growth}
+
+Averaging over $[0,\mathcal{T}]$ yields
+
+$$
+\langle\widetilde r_i\rangle-\sum_{j=1}^{m}A_{ij}\langle N_j\rangle
+=\frac{\log N_i(\mathcal{T})-\log N_i(0)}{\mathcal{T}}.
+$$ {#eq-finite-time-mean}
+
+
+If abundances remain bounded above and bounded away from zero over the averaging interval, then there exist constants $(N_{\min}>0)$ and $(N_{\max}<\infty)$ such that
+
+$$
+N_{\min}\leq N_i(t)\leq N_{\max}.
+$$
+
+The right-hand side of @eq-finite-time-mean is a boundary term: it depends only on the abundance at the start and end of the averaging interval. If abundances remain bounded in this way, then the total endpoint change in log abundance is also bounded:
+
+$$
+\left|\log N_i(\mathcal{T})-\log N_i(0)\right|
+\leq
+\log\left(\frac{N_{\max}}{N_{\min}}\right).
+$$
+
+A bounded endpoint change divided by an increasingly long averaging interval must become negligible. It therefore follows that
+
+$$
+\frac{\log N_i(\mathcal{T})-\log N_i(0)}{\mathcal{T}}
+\longrightarrow 0
+\qquad\text{as}\qquad
+\mathcal{T}\longrightarrow\infty.
+$$
+
+Thus, over a long interval, the average log-growth rate is approximately zero for a bounded persistent population. This is the key step in the derivation: persistence converts the dynamic LV equation into an approximate balance between the mean intrinsic growth rates and the mean competitive effects:
+
+$$
+\left\langle\widetilde r_i\right\rangle
+\approx
+\sum_{j=1}^{m}A_{ij}\left\langle N_j\right\rangle.
+$$
+
+or equivalently,
+
+$$
+\langle\widetilde{\mathbf r}\rangle\approx\mathbf A\langle\mathbf N\rangle.
+$$ {#eq-mean-relationship}
+
+With continuous immigration, the corresponding identity is
+
+$$
+\langle\widetilde r_i\rangle-\sum_{j=1}^{m}A_{ij}\langle N_j\rangle
++I\left\langle\frac{1}{N_i}\right\rangle
+=\frac{\log N_i(\mathcal{T})-\log N_i(0)}{\mathcal{T}}.
+$$ {#eq-immigration-correction}
+
+Therefore, @eq-mean-relationship is accurate when immigration is absent or when $I\langle1/N_i\rangle$ is small relative to the other terms. Immigration may be especially consequential for species maintained at very low abundance.
+
+# Slow-environment approximation
+
+This section adds the ecological assumption that temperature changes slowly enough for the community to remain near its moving equilibrium. Under that assumption, abundance variation can be approximated from the temperature-driven growth-rate vector, allowing CP variability and biomass variability to be compared through the interaction matrix.
+
+Assume that temperature changes slowly relative to the intrinsic relaxation of the biological dynamics. The abundance vector then remains close to a temperature-dependent quasi-equilibrium $\mathbf N^*(T)$ satisfying, when immigration is negligible,
+
+$$
+\widetilde{\mathbf r}(T)\approx\mathbf A\mathbf N^*(T).
+$$ {#eq-quasi-equilibrium}
+
+Equivalently,
+
+$$
+\mathbf N^*(T)\approx\mathbf A^{-1}\widetilde{\mathbf r}(T),
+$$ {#eq-equilibrium-map}
+
+when $\mathbf A$ is invertible and the equilibrium is feasible. Consequently,
+
+$$
+\langle\widetilde{\mathbf r}\widetilde{\mathbf r}^\mathsf{T}\rangle
+\approx\mathbf A\langle\mathbf N^*\mathbf N^{*\mathsf{T}}\rangle\mathbf A^\mathsf{T}.
+$$ {#eq-second-moment-map}
+
+For notational simplicity, we henceforth write $\mathbf N$ for the quasi-equilibrium vector. Substitution into @eq-cv-cp gives
+
+$$
+\operatorname{CV}_{CP}^2
+\approx
+\frac{\mathbf 1^\mathsf{T}\mathbf A\langle\mathbf N\mathbf N^\mathsf{T}\rangle\mathbf A^\mathsf{T}\mathbf 1}
+{\mathbf 1^\mathsf{T}\mathbf A\langle\mathbf N\rangle\langle\mathbf N\rangle^\mathsf{T}\mathbf A^\mathsf{T}\mathbf 1}-1.
+$$ {#eq-cp-abundance-general}
+
+This relationship shows that CP variability is linked to abundance variability, but that the mapping depends on the interaction matrix.
+
+# Average interaction structure and pair-specific deviations
+
+This section asks how the interaction matrix changes the CP-biomass relationship. The ecological idea is that interactions have both an average component, shared across many species pairs, and idiosyncratic pair-specific deviations. Separating these parts lets us see when interactions mostly transmit the aggregate CP signal and when interaction heterogeneity adds species-level noise.
+
+To obtain a more interpretable expression, assume that effective self-interactions are fixed at $a_0$ and that off-diagonal interactions have mean $\bar a$ and variance $\sigma_a^2$. Write
+
+$$
+\mathbf A=(a_0-\bar a)\mathbf I+\bar a\mathbf 1\mathbf 1^\mathsf{T}+\boldsymbol\Delta.
+$$ {#eq-interaction-decomposition}
+
+This decomposition separates the interaction matrix into two conceptually distinct parts:
+
+1. **Average interaction structure.** The matrix $(a_0-\bar a)\mathbf I+\bar a\mathbf 1\mathbf 1^\mathsf{T}$ is the interaction matrix that would be obtained if every off-diagonal interaction equalled the mean interaction strength $\bar a$. It retains the fixed self-interaction $a_0$ and the mean effect of the other $m-1$ species.
+2. **Pair-specific deviations.** The matrix $\boldsymbol\Delta$ contains the deviations of individual interactions from that average matrix. Its off-diagonal entries have mean zero and variance $\sigma_a^2$, while its diagonal entries are zero. Thus, $\sigma_a^2$ measures interaction heterogeneity around the average interaction structure.
+
+Define the average contribution to a row or column sum as
+
+$$
+c=a_0+(m-1)\bar a.
+$$ {#eq-c-definition}
+
+The quantity $c$ summarizes the fixed self-interaction together with the mean contribution of the other $m-1$ species. It follows that
+
+$$
+\mathbf 1^\mathsf{T}\mathbf A=c\mathbf 1^\mathsf{T}+\mathbf 1^\mathsf{T}\boldsymbol\Delta.
+$$ {#eq-one-a}
+
+For an arbitrary matrix $\mathbf Q$, neglecting mean-zero cross terms and replacing the quadratic contribution of the deviations by its ensemble expectation gives
+
+$$
+\mathbf 1^\mathsf{T}\mathbf A\mathbf Q\mathbf A^\mathsf{T}\mathbf 1
+\approx c^2\mathbf 1^\mathsf{T}\mathbf Q\mathbf 1
++m\sigma_a^2\operatorname{tr}(\mathbf Q).
+$$ {#eq-random-matrix-approximation}
+
+The first term is the contribution expected from the average interaction structure. The second term is the expected contribution of pair-specific heterogeneity. The approximation is an ensemble statement: its accuracy for one finite interaction matrix depends on species richness, the distribution and dependence of interaction coefficients, and the extent to which the omitted terms cancel.
+
+Applying @eq-random-matrix-approximation to @eq-cp-abundance-general gives
+
+$$
+\operatorname{CV}_{CP}^2
+\approx
+\frac{c^2\left\langle\left(\sum_i N_i\right)^2\right\rangle
++m\sigma_a^2\sum_i\langle N_i^2\rangle}
+{c^2\left(\sum_i\langle N_i\rangle\right)^2
++m\sigma_a^2\sum_i\langle N_i\rangle^2}-1.
+$$ {#eq-expanded-cp-cv}
+
+# Weighted decomposition of variability
+
+This section collects the preceding pieces into the main prediction. It rewrites CP variability as a weighted combination of total community biomass variability and weighted species-level abundance variability, with the weight $p$ measuring how strongly the average interaction structure dominates over pair-specific heterogeneity.
+
+Define total community abundance as
+
+$$
+B(t)=\sum_{i=1}^{m}N_i(t)
+$$ {#eq-total-abundance}
+
+and
+
+$$
+\operatorname{CV}_{B}^2=\frac{\langle B^2\rangle}{\langle B\rangle^2}-1.
+$$ {#eq-community-cv}
+
+Define weighted species-level variability as
+
+$$
+\operatorname{CV}_{\mathrm{sp}}^2
+=\frac{\sum_i\langle N_i^2\rangle}{\sum_i\langle N_i\rangle^2}-1
+=\frac{\sum_i\langle N_i\rangle^2\operatorname{CV}^2(N_i)}{\sum_i\langle N_i\rangle^2}.
+$$ {#eq-species-cv}
+
+Now define
+
+$$
+p=
+\frac{c^2\left(\sum_i\langle N_i\rangle\right)^2}
+{c^2\left(\sum_i\langle N_i\rangle\right)^2
++m\sigma_a^2\sum_i\langle N_i\rangle^2}.
+$$ {#eq-p-definition}
+
+@eq-expanded-cp-cv becomes
+
+$$
+\boxed{\operatorname{CV}_{CP}^2
+\approx p\operatorname{CV}_{B}^2+(1-p)\operatorname{CV}_{\mathrm{sp}}^2.}
+$$ {#eq-main-result}
+
+The weight $p$ compares the contribution of the average interaction structure with the contribution of pair-specific interaction heterogeneity. A large value of $p$ means that the average interaction term dominates the approximation; a smaller value means that variation among individual pairwise interactions makes a larger contribution.
+
+For $p>0$, the relationship can be rearranged as
+
+$$
+\operatorname{CV}_{B}^2
+\approx\frac{\operatorname{CV}_{CP}^2-(1-p)\operatorname{CV}_{\mathrm{sp}}^2}{p}.
+$$ {#eq-predictive-form}
+
+Thus, a near one-to-one relationship between CP variability and total-abundance variability is expected when $p$ is close to one.
+
+# Equal-mean special case
+
+This section gives a simpler interpretation of $p$ for the special case where species have similar mean abundances. The purpose is not to assume that communities always have equal abundances, but to make the ecological controls on $p$ easier to see: mean interaction structure pushes $p$ upward, while heterogeneity among pairwise interactions pushes it downward.
+
+If all species have approximately the same mean abundance, $\langle N_i\rangle\approx\mu$, then
+
+$$
+\left(\sum_i\langle N_i\rangle\right)^2\approx m^2\mu^2,
+\qquad
+\sum_i\langle N_i\rangle^2\approx m\mu^2,
+$$
+
+and
+
+$$
+p\approx\frac{c^2}{c^2+\sigma_a^2}.
+$$ {#eq-p-equal-means}
+
+When effective self-interactions are standardized to one, $a_0=1$, this becomes
+
+$$
+p\approx
+\frac{[1+(m-1)\bar a]^2}{[1+(m-1)\bar a]^2+\sigma_a^2}.
+$$ {#eq-p-standardized}
+
+Therefore, $p$ approaches one when the squared average interaction term, $[a_0+(m-1)\bar a]^2$, is large relative to the variance in pairwise interaction strengths, $\sigma_a^2$. In ecological terms, the interaction matrix is then well summarized by its mean structure, and pair-specific deviations contribute relatively little. Conversely, large interaction heterogeneity reduces $p$ and increases the contribution of weighted species-level variability.
+
+Non-negative mean abundances do not by themselves imply $p>1/2$. The relevant condition is
+
+$$
+c^2\left(\sum_i\langle N_i\rangle\right)^2
+>m\sigma_a^2\sum_i\langle N_i\rangle^2.
+$$ {#eq-p-half-condition}
+
+# Connection to the simulation results
+
+The LV publication experiments use two different ways of constructing competitive interaction matrices. LV1 uses asymmetric uniform competition: interspecific interaction values are drawn from uniform distributions whose expected values are 0, 0.25, 0.5, 0.75, and 1. LV2 uses symmetric lognormal competition: interspecific interaction values are drawn from lognormal distributions with medians 0, 0.25, 0.5, 0.75, and 1, and with `sdlog = 0.5` for the non-zero treatments. In both experiments, diagonal self-interaction is fixed at 1.
+
+The next graph shows the expected distributions of interspecific interaction values specified by these treatments. The zero-competition treatment is a point mass at zero rather than a continuous density, so it is shown as a vertical spike.
+
+```{r lv-interaction-treatment-pdfs, fig.width=8, fig.height=4.8}
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+  library(tibble)
+})
+
+interaction_grid <- seq(0, 3.5, length.out = 800)
+
+interaction_density <- bind_rows(
+  tibble(
+    experiment = "LV1",
+    treatment = "0",
+    interaction_strength = 0,
+    x = interaction_grid,
+    density = ifelse(.data$x == 0, NA_real_, 0),
+    treatment_type = "Point mass"
+  ),
+  bind_rows(lapply(
+    list(
+      list(label = "0.25", min = 0, max = 0.5),
+      list(label = "0.5", min = 0, max = 1),
+      list(label = "0.75", min = 0.25, max = 1.25),
+      list(label = "1", min = 0.5, max = 1.5)
+    ),
+    function(trt) {
+      trt_label <- trt[["label"]]
+      trt_min <- trt[["min"]]
+      trt_max <- trt[["max"]]
+      tibble(
+        experiment = "LV1",
+        treatment = trt_label,
+        interaction_strength = as.numeric(trt_label),
+        x = interaction_grid,
+        density = dunif(interaction_grid, trt_min, trt_max),
+        treatment_type = "Uniform"
+      )
+    }
+  )),
+  tibble(
+    experiment = "LV2",
+    treatment = "0",
+    interaction_strength = 0,
+    x = interaction_grid,
+    density = ifelse(.data$x == 0, NA_real_, 0),
+    treatment_type = "Point mass"
+  ),
+  bind_rows(lapply(
+    c(0.25, 0.5, 0.75, 1),
+    function(median_value) {
+      tibble(
+        experiment = "LV2",
+        treatment = as.character(median_value),
+        interaction_strength = median_value,
+        x = interaction_grid,
+        density = dlnorm(interaction_grid, meanlog = log(median_value), sdlog = 0.5),
+        treatment_type = "Lognormal"
+      )
+    }
+  ))
+) |>
+  mutate(
+    experiment = factor(.data$experiment, levels = c("LV1", "LV2")),
+    treatment = factor(.data$treatment, levels = c("0", "0.25", "0.5", "0.75", "1"))
+  )
+
+point_mass_data <- interaction_density |>
+  filter(.data$treatment_type == "Point mass") |>
+  distinct(.data$experiment, .data$treatment, .data$interaction_strength)
+
+ggplot(
+  interaction_density |>
+    filter(.data$treatment_type != "Point mass"),
+  aes(x = x, y = density, colour = treatment)
+) +
+  geom_line(linewidth = 0.8) +
+  geom_segment(
+    data = point_mass_data,
+    aes(x = 0, xend = 0, y = 0, yend = 3, colour = treatment),
+    linewidth = 1.1,
+    inherit.aes = FALSE
+  ) +
+  facet_wrap(vars(experiment), nrow = 1) +
+  scale_colour_viridis_d(option = "plasma", end = 0.9) +
+  coord_cartesian(xlim = c(0, 3.5), ylim = c(0, 4)) +
+  labs(
+    x = expression("Interspecific interaction value " * alpha[ij]),
+    y = "Expected density",
+    colour = "Treatment"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank(), legend.position = "bottom")
+```
+
+We then calculated the realised value of $p$ for every simulated community in the two LV publication experiments, using the realised interaction matrix and species mean abundances.
+
+```{r lv-p-distribution, fig.width=8, fig.height=4.8}
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(ggplot2)
+  library(tibble)
+})
+
+lv_p_values <- bind_rows(
+  readRDS("publication_experiments/data/LV1/p_values.RDS"),
+  readRDS("publication_experiments/data/LV2/p_values.RDS")
+) |>
+  mutate(
+    interaction_strength = as.numeric(sub(".*_", "", .data$interaction_treatment_label)),
+    interaction_treatment = factor(
+      .data$interaction_strength,
+      levels = sort(unique(.data$interaction_strength))
+    ),
+    experiment = factor(.data$experiment, levels = c("LV1", "LV2"))
+  )
+
+lv_p_summary <- lv_p_values |>
+  group_by(.data$experiment, .data$interaction_treatment) |>
+  summarise(
+    median_p = median(.data$p, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(
+  lv_p_values,
+  aes(x = interaction_treatment, y = p)
+) +
+  geom_violin(aes(fill = experiment), alpha = 0.55, colour = NA, trim = TRUE) +
+  geom_boxplot(width = 0.14, outlier.alpha = 0.08, fill = "white", colour = "grey25") +
+  geom_point(
+    data = lv_p_summary,
+    aes(y = median_p),
+    size = 2.2,
+    colour = "black"
+  ) +
+  facet_wrap(vars(experiment), nrow = 1) +
+  scale_y_continuous(limits = c(0, 1), expand = expansion(mult = c(0.01, 0.03))) +
+  scale_fill_manual(values = c(LV1 = "#4C78A8", LV2 = "#F58518"), guide = "none") +
+  labs(
+    x = "Interaction treatment",
+    y = "Realised p"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid.minor = element_blank())
+```
+
+The realised $p$ values are high in both LV experiments. In the no-competition treatment they are $p=1$. This means that, for most simulated communities, even though interactions can be strong and have large effects on population dynamics, the average interaction structure dominates the pair-specific heterogeneity term in this part of the analytical approximation. The lognormal interaction treatments in LV2 create somewhat lower minimum values of $p$, indicating greater pair-specific heterogeneity in some realised communities, but the median $p$ values remain above 0.9 for all treatments in both experiments. Thus, variation in $p$ alone is not expected to strongly weaken the CP--biomass relationship in these simulations, although the other assumptions listed below still affect how closely the full approximation should hold.
+
+# Scope, assumptions, and limitations
+
+This section states where the derivation should and should not be expected to work. The aim is to make the biological requirements explicit, so that departures in the simulations can be interpreted as informative assumption checks rather than as simple failures of the idea.
+
+1. **Identity-link community performance.** The analysis concerns $CP(t)=\sum_i\widetilde r_i(T_t)$ and does not derive the binary-viability CP used for the consumer-resource model.
+2. **Positive and bounded trajectories.** The log-growth argument requires positive abundances and a negligible finite-time boundary term.
+3. **Weak or absent immigration.** Immigration adds the correction in @eq-immigration-correction.
+4. **Timescale separation.** The approximation $\mathbf N(t)\approx\mathbf N^*[T(t)]$ neglects lags between environmental change and abundance responses.
+5. **Feasible and attracting quasi-equilibria.** The temperature-dependent equilibrium must exist, remain non-negative, and be dynamically attracting.
+6. **A fixed effective interaction matrix.** The derivation treats $\mathbf A=(\beta+\delta)\boldsymbol\alpha$ as independent of temperature and time.
+7. **Independent pair-specific deviations.** The approximation assumes mean-zero deviations with common variance and neglects correlations or other structured departures from the average interaction matrix.
+8. **Ensemble-to-realization approximation.** Terms that vanish across an ensemble need not vanish for a particular finite community.
+9. **Second-moment prediction.** The result concerns coefficients of variation and does not describe all features of transient or species-specific dynamics.
+
+# Extension to general link functions
+
+This section places the LV result within the broader community-performance framework. It explains why the derivation applies most directly to the identity-link LV case, and why consumer-resource or viability-based CP measures would need additional assumptions or a separate derivation.
+
+The broader community-performance framework can be written as
+
+$$
+CP_y(t)=\sum_{i=1}^{m}f_{\mathrm{model},y}\!\left(P_i[E(t)]\right),
+$$ {#eq-general-link}
+
+where $P_i(E)$ is a species performance curve and $f_{\mathrm{model},y}$ maps performance onto expected contribution to community variable $y$. The present derivation treats the identity-link LV case,
+
+$$
+f_{\mathrm{LV},B}(P)=P=\widetilde r_i(T).
+$$ {#eq-identity-link}
+
+A binary-viability construction corresponds to a nonlinear link such as
+
+$$
+f(P)=\mathbb I(P>0).
+$$ {#eq-binary-link}
+
+The linear moment mapping used here does not transfer automatically to nonlinear link functions. Extending the theory would require an explicit model connecting transformed performance to abundance, or a suitable local linearization.
+
+
