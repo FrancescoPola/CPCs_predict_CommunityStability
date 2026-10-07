@@ -1,13 +1,13 @@
 ---
-title: "Supplementary 4: Why community performance predicts community stability (Lotka-Volterra derivation)"
+title: "Supplementary Information 4: Why community performance predicts temporal stability"
 author:
-  - name: "[Author names]"
+  - name: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Stephan B. Munch, Owen L. Petchey"
 date: last-modified
 format:
   html:
     toc: true
     number-sections: true
-    html-math-method: mathjax
+    html-math-method: mathml
     embed-resources: true
   pdf:
     toc: true
@@ -18,6 +18,24 @@ execute:
   warning: false
   message: false
 ---
+
+```{r setup}
+find_repo_root <- function(start = getwd()) {
+  current <- normalizePath(start, winslash = "/", mustWork = TRUE)
+  repeat {
+    if (file.exists(file.path(current, "CPCs_predict_CommunityStability.Rproj"))) {
+      return(current)
+    }
+    parent <- dirname(current)
+    if (identical(parent, current)) {
+      stop("Could not locate the CPCs_predict_CommunityStability repository root.")
+    }
+    current <- parent
+  }
+}
+
+repo_root <- find_repo_root()
+```
 
 # Overview
 
@@ -511,8 +529,8 @@ suppressPackageStartupMessages({
 })
 
 lv_p_values <- bind_rows(
-  readRDS("publication_experiments/data/LV1/p_values.RDS"),
-  readRDS("publication_experiments/data/LV2/p_values.RDS")
+  readRDS(file.path(repo_root, "publication_experiments", "data", "LV1", "p_values.RDS")),
+  readRDS(file.path(repo_root, "publication_experiments", "data", "LV2", "p_values.RDS"))
 ) |>
   mutate(
     interaction_strength = as.numeric(sub(".*_", "", .data$interaction_treatment_label)),
@@ -592,5 +610,3 @@ f(P)=\mathbb I(P>0).
 $$ {#eq-binary-link}
 
 The linear moment mapping used here does not transfer automatically to nonlinear link functions. Extending the theory would require an explicit model connecting transformed performance to abundance, or a suitable local linearization.
-
-

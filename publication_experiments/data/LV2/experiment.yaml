@@ -1,10 +1,10 @@
 experiment:
   name: LV2
-  description: "LV2: large discrete LV publication experiment with symmetric log-normal competition and compact summaries only."
+  description: "LV2: continuous-time LV publication experiment with symmetric log-normal competition and compact summaries only."
   random_seed: 1234
 
 model:
-  type: lv_discrete
+  type: lv_continuous
 
 community:
   richness: 4
@@ -76,11 +76,20 @@ environment:
     mean: 20
     sd: 4
     one_over_f_gamma: 0.8
+    sample_interval: 1
 
 simulation:
-  burn_in_duration: 1000
-  experiment_duration: 1000
+  burn_in_duration: 200
+  experiment_duration: 2000
+  temperature_interpolation: linear
   immigration_rate: 0.1
+  immigration_mode: continuous
+  ode:
+    method: lsoda
+    rtol: 1e-2
+    atol: 1e-4
+    max_step: 1
+  blowup_threshold: 1e12
   initial_abundance_seed_base: 4242
 
 output:
@@ -97,7 +106,7 @@ parallel:
   workers: available_cores_minus_1
   environments: true
   simulations: true
-  community_measures: true
+  community_measures: false
 
 treatments:
   values:

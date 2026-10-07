@@ -1,32 +1,32 @@
-# Install the current Codex-branch version before running, if needed.
-install.packages("remotes")
-remotes::install_github(
-  "opetchey/community.simulator@codex/yaml-spec-rewrite",
-  build_vignettes = TRUE,
-  dependencies = TRUE,
-  upgrade = "never"
-)
-
 library(community.simulator)
+
+find_repo_root <- function(start = getwd()) {
+  current <- normalizePath(start, winslash = "/", mustWork = TRUE)
+  repeat {
+    if (file.exists(file.path(current, "CPCs_predict_CommunityStability.Rproj"))) {
+      return(current)
+    }
+    parent <- dirname(current)
+    if (identical(parent, current)) {
+      stop("Could not locate the CPCs_predict_CommunityStability repository root.")
+    }
+    current <- parent
+  }
+}
 
 overwrite_output <- TRUE
 preflight_check <- FALSE
 verbose_output <- TRUE
 
 experiment_folder_location <- normalizePath(
-  path.expand("data"),
+  file.path(find_repo_root(), "publication_experiments", "data"),
   winslash = "/",
   mustWork = TRUE
 )
 
 experiments <- data.frame(
   experiment_name = c("LV1", "LV2", "CR1", "CR2"),
-  experiment_design_filename = c(
-    "canonical_01_lv_factorial_publication.yaml",
-    "canonical_02_lv_factorial_publication.yaml",
-    "canonical_01_cr_factorial_publication.yaml",
-    "canonical_02_cr_factorial_publication.yaml"
-  ),
+  experiment_design_filename = rep("experiment.yaml", 4),
   stringsAsFactors = FALSE
 )
 

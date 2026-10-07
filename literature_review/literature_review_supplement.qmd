@@ -1,7 +1,7 @@
 ---
 title: "Supplementary Information 1 - Literature Review"
 subtitle: "Search strategy, screening criteria, and summary of retained studies"
-authors: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Owen L. Petchey"
+authors: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Stephan B. Munch, Owen L. Petchey"
 editor: source
 execute:
   echo: false
@@ -35,7 +35,21 @@ library(patchwork)
 library(readxl)
 library(viridis)
 
-repo_root <- "/Users/francesco/Documents/GitHub/CPCs_predict_CommunityStability"
+find_repo_root <- function(start = getwd()) {
+  current <- normalizePath(start, winslash = "/", mustWork = TRUE)
+  repeat {
+    if (file.exists(file.path(current, "CPCs_predict_CommunityStability.Rproj"))) {
+      return(current)
+    }
+    parent <- dirname(current)
+    if (identical(parent, current)) {
+      stop("Could not locate the CPCs_predict_CommunityStability repository root.")
+    }
+    current <- parent
+  }
+}
+
+repo_root <- find_repo_root()
 literature_file_path <- file.path(repo_root, "literature_review", "data", "literature_file.xls")
 ```
 

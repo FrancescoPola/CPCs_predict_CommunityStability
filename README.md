@@ -1,116 +1,99 @@
-# Community performance curves predict community stability despite interaction effects
+# Community performance curves predict temporal stability despite interaction effects
 
-This repository contains the data, code, figures, and supplementary information for the manuscript **"Community performance curves predict community stability despite interaction effects"**.
+This repository contains the data, code, figures, and supplementary information for the manuscript **“Community performance curves predict temporal stability despite interaction effects.”**
 
-The active repository is organised around three parts of the study:
+The active analysis has four components:
 
 1. a literature review;
 2. four simulation experiments;
-3. a purpose-designed empirical ciliate microcosm experiment.
+3. a purpose-designed ciliate microcosm experiment; and
+4. an analytical Lotka–Volterra derivation.
 
-The repository also contains a single Quarto file for reproducing the manuscript figures.
+The `old/` directory is an archive and is not used by the current analyses.
 
-## Repository Structure
+## Repository structure
 
 ```text
 CPCs_predict_CommunityStability/
-├── literature_review/
-├── manuscript figure/
-├── new_empirical_study/
-├── publication_experiments/
-├── old/
-├── Supplementary_Info_1.html
-├── Supplementary_Info_2.html
-└── Supplementary_Info_3.html
+├── literature_review/             # Supplementary Information 1
+├── publication_experiments/       # Supplementary Information 2
+├── new_empirical_study/           # Supplementary Information 3
+├── Supplementary_Info_4.qmd       # Supplementary Information 4 source
+├── manuscript figure/             # Main-text figure source
+├── old/                           # Archived analyses; not used
+├── Supplementary_Info_1.html      # Submission copy of SI1
+├── Supplementary_Info_2.html      # Submission copy of SI2
+├── Supplementary_Info_3.html      # Submission copy of SI3
+└── Supplementary_Info_4.html      # Submission copy of SI4
 ```
 
-## Main Folders
+## Canonical sources and outputs
 
-### `literature_review/`
+| Material | Canonical source | Canonical rendered output |
+| --- | --- | --- |
+| Supplementary Information 1: literature review | `literature_review/literature_review_supplement.qmd` | `literature_review/literature_review_supplement.html` |
+| Supplementary Information 2: simulation studies | `publication_experiments/CPC_supplementary_information_simulation_clean.qmd` | `publication_experiments/CPC_supplementary_information_simulation_clean.html` |
+| Supplementary Information 3: empirical study | `new_empirical_study/Combined_TPC_CPC_Report.qmd` | `new_empirical_study/Combined_TPC_CPC_Report.html` |
+| Supplementary Information 4: analytical derivation | `Supplementary_Info_4.qmd` | `Supplementary_Info_4.html` |
+| Main-text figures | `manuscript figure/manuscript_figures.qmd` | `manuscript figure/manuscript_figures.html` |
 
-Contains the literature-review data and supplementary report.
+The four top-level `Supplementary_Info_*.html` files are submission copies. They should be refreshed from the canonical rendered outputs above before submission.
 
-- `data/literature_file.xls`: screening and extraction table for the literature review.
-- `literature_review_supplement.qmd`: Quarto source for the literature-review supplement.
-- `literature_review_supplement.html`: rendered HTML supplement.
+## Data and analyses
 
-Render with:
+### Literature review
+
+`literature_review/data/literature_file.xls` contains the screening and extraction table. The Quarto report reads this file and reproduces the literature-review figure and summary.
+
+### Simulation experiments
+
+`publication_experiments/data/` contains four active experiments:
+
+| Folder | Framework | Treatment |
+| --- | --- | --- |
+| `LV1` | Continuous-time Lotka–Volterra | Asymmetric uniform competition gradient |
+| `LV2` | Continuous-time Lotka–Volterra | Symmetric log-normal competition gradient |
+| `CR1` | Continuous-time consumer–resource | Deterministic private-to-shared resource-use gradient |
+| `CR2` | Continuous-time consumer–resource | Stochastic beta-distributed private-to-shared resource-use gradient |
+
+Each experiment folder contains its active specification (`experiment.yaml`), compact simulation outputs, temperature database, and run log. Each run contains 7,290 valid simulations.
+
+Across all four experiments, simulations used a 200-time-unit burn-in followed by 2,000 time units of environmental forcing. Forced temperatures had a mean of 20 °C, a standard deviation of 4 °C, and 1/*f* temporal autocorrelation with exponent γ = 0.8. The Lotka–Volterra experiments used continuous immigration of 0.1 biomass units per species per unit time.
+
+See `publication_experiments/README.md` for simulation-specific notes and `publication_experiments/run_all.R` for the batch runner.
+
+### Empirical experiment
+
+`new_empirical_study/data/` contains:
+
+- `combined_timeseries_df.csv`: community experiment time series;
+- `TPC_timeseries_df.csv`: monoculture thermal-performance experiment data.
+
+`Combined_TPC_CPC_Report.qmd` reproduces the empirical analyses and supplementary figures.
+
+### Analytical derivation
+
+`Supplementary_Info_4.qmd` develops the continuous-time Lotka–Volterra link between community-performance variability and total-abundance variability and evaluates its assumptions against the simulations.
+
+### Main-text figures
+
+`manuscript figure/manuscript_figures.qmd` reproduces the conceptual, literature-review, simulation, empirical-predictor, and structural-equation-model figures used in the manuscript.
+
+## Rendering the reports
+
+The analyses require R, Quarto, and the R packages loaded at the start of each `.qmd` file. Simulation reruns additionally require the `community.simulator` package.
+
+From the repository root, render the reports in this order:
 
 ```bash
-cd literature_review
-quarto render literature_review_supplement.qmd
+quarto render literature_review/literature_review_supplement.qmd
+quarto render publication_experiments/CPC_supplementary_information_simulation_clean.qmd
+quarto render new_empirical_study/Combined_TPC_CPC_Report.qmd
+quarto render Supplementary_Info_4.qmd
+quarto render "manuscript figure/manuscript_figures.qmd"
 ```
 
-### `publication_experiments/`
-
-Contains the simulation study supplement and the publication-ready simulation outputs.
-
-- `CPC_supplementary_information_simulation_clean.qmd`: Quarto source for the simulation supplement.
-- `CPC_supplementary_information_simulation_clean.html`: rendered simulation supplement.
-- `run_all.R`: script for rerunning the four publication simulation experiments.
-- `README.md`: detailed simulation-folder README.
-- `data/`: simulation inputs and outputs used by the report.
-
-The active simulation runs are:
-
-| Folder | Framework | Description |
-| --- | --- | --- |
-| `data/LV1` | Lotka-Volterra | Asymmetric uniform interaction-strength gradient |
-| `data/LV2` | Lotka-Volterra | Symmetric log-normal interaction-strength gradient |
-| `data/CR1` | Consumer-resource | Deterministic shared-resource gradient |
-| `data/CR2` | Consumer-resource | Stochastic shared-resource gradient |
-
-Each simulation folder contains the corresponding YAML specification, `community_measures.RDS`, `experiment_table.RDS`, `population_summaries.RDS`, `simulation_summaries.RDS`, `temperatures.db`, and run logs.
-
-
-To rerun the simulation experiments, first install the R package `community.simulator`
-
-
-### `new_empirical_study/`
-
-Contains the empirical ciliate microcosm analysis and report.
-
-- `data/combined_timeseries_df.csv`: community experiment time-series data.
-- `data/TPC_timeseries_df.csv`: monoculture thermal-performance experiment data.
-- `Combined_TPC_CPC_Report.qmd`: Quarto source for the empirical supplement.
-- `Combined_TPC_CPC_Report.html`: rendered empirical supplement.
-
-
-### `manuscript figure/`
-
-Contains the reproducible figure file for the main manuscript.
-
-- `manuscript_figures.qmd`: Quarto source for the manuscript figures.
-- `manuscript_figures.html`: rendered figure document.
-
-
-This file reproduces the conceptual figures, literature-review figure, simulation figure, empirical predictor figure, and empirical SEM figure used for the manuscript.
-
-### `old/`
-
-Archive of earlier analyses, reports, and exploratory folders. These files are retained for project history but are not the active source for the current manuscript figures or supplements.
-
-## Top-Level Supplement Files
-
-The root folder also contains rendered copies of the supplementary information:
-
-- `Supplementary_Info_1.html`: literature-review supplement.
-- `Supplementary_Info_2.html`: simulation supplement.
-- `Supplementary_Info_3.html`: empirical-study supplement.
-
-The source files for these supplements are in the folders described above.
-
-
-## Recommended Use
-
-For reproducing the current manuscript materials, use the active folders in this order:
-
-1. Render `literature_review/literature_review_supplement.qmd`.
-2. Render `publication_experiments/CPC_supplementary_information_simulation_clean.qmd`.
-3. Render `new_empirical_study/Combined_TPC_CPC_Report.qmd`.
-4. Render `manuscript figure/manuscript_figures.qmd`.
-
-The Quarto documents read the data from the current `data/` folders and should run without using the archived `old/` directory.
+The active reports read only the current data directories; they do not depend on `old/`. After rerunning either Lotka–Volterra experiment, run `source("publication_experiments/calculate_p_values.R")` from R before rendering Supplementary Information 4.
 
 ## License
 

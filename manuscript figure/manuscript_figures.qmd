@@ -39,7 +39,21 @@ library(tidyr)
 library(viridis)
 library(viridisLite)
 
-repo_root <- "/Users/francesco/Documents/GitHub/CPCs_predict_CommunityStability"
+find_repo_root <- function(start = getwd()) {
+  current <- normalizePath(start, winslash = "/", mustWork = TRUE)
+  repeat {
+    if (file.exists(file.path(current, "CPCs_predict_CommunityStability.Rproj"))) {
+      return(current)
+    }
+    parent <- dirname(current)
+    if (identical(parent, current)) {
+      stop("Could not locate the CPCs_predict_CommunityStability repository root.")
+    }
+    current <- parent
+  }
+}
+
+repo_root <- find_repo_root()
 empirical_root <- file.path(repo_root, "new_empirical_study")
 publication_root <- file.path(repo_root, "publication_experiments", "data")
 literature_file_path <- file.path(repo_root, "literature_review", "data", "literature_file.xls")
@@ -663,10 +677,7 @@ concept_performance <- function(temperature, optimum, width) {
 }
 
 concept_species_performance <- function(species_df, temperature_df) {
-  crossing(
-    temperature_df,
-    species_df
-  ) |>
+  crossing(temperature_df, species_df) |>
     mutate(
       performance = concept_performance(temperature, Topt, width)
     )
@@ -679,7 +690,8 @@ concept_cp_timeseries <- function(species_df, temperature_df) {
     ungroup()
 }
 
-concept_viability_timeseries <- function(species_df, temperature_df, threshold = 0.35) {
+concept_viability_timeseries <- function(species_df, temperature_df,
+                                         threshold = 0.35) {
   concept_species_performance(species_df, temperature_df) |>
     mutate(viable = as.numeric(performance >= threshold)) |>
     group_by(time) |>
@@ -687,18 +699,19 @@ concept_viability_timeseries <- function(species_df, temperature_df, threshold =
     ungroup()
 }
 
-concept_curve_column <- function(species_df, community_label, show_title = FALSE, show_x = FALSE) {
+concept_curve_column <- function(species_df, community_label,
+                                 show_title = FALSE, show_x = FALSE) {
   curve_temperatures <- tibble(
     time = seq_along(concept_temperature_grid),
     temperature = concept_temperature_grid
   )
-
+  
   species_curves <- concept_species_performance(species_df, curve_temperatures)
-
+  
   cp_curve <- species_curves |>
     group_by(temperature) |>
     summarise(community_performance = sum(performance), .groups = "drop")
-
+  
   p <- ggplot() +
     geom_line(
       data = species_curves,
@@ -713,7 +726,7 @@ concept_curve_column <- function(species_df, community_label, show_title = FALSE
       colour = "black"
     ) +
     scale_colour_manual(values = concept_species_colours, drop = FALSE) +
-    theme_clean(12) +
+    theme_clean(20) +
     labs(
       title = if (show_title) "Species curves and CP" else NULL,
       subtitle = community_label,
@@ -721,34 +734,58 @@ concept_curve_column <- function(species_df, community_label, show_title = FALSE
       y = "Performance",
       colour = "Species"
     )
-
+  
   if (!show_x) {
     p <- p + theme(axis.title.x = element_blank())
   }
-
+  
   p
 }
 
-concept_timeseries_column <- function(species_df, temperature_df, title, show_x = FALSE) {
+concept_timeseries_column <- function(species_df, temperature_df,
+                                      title, show_x = FALSE) {
   plot_data <- concept_cp_timeseries(species_df, temperature_df)
+  
   cp_data <- plot_data |>
     distinct(time, community_performance)
-
+  
   cp_cv <- sd(cp_data$community_performance) / mean(cp_data$community_performance)
-  temperature_trace <- scale_temperature_trace(
-    temperature_df,
-    c(plot_data$performance, cp_data$community_performance)
+  
+  # Use a common temperature range in every panel
+  temperature_limits <- c(10, 30)
+  
+  # Primary y-axis is used for both species performance and summed CP
+  y_limits <- c(
+    0,
+    max(c(plot_data$performance, cp_data$community_performance)) * 1.05
   )
-
+  
+  # Rescale temperature onto the primary y-axis for plotting
+  temperature_trace <- temperature_df |>
+    mutate(
+      temperature_scaled =
+        (temperature - temperature_limits[1]) /
+        diff(temperature_limits) *
+        diff(y_limits) +
+        y_limits[1]
+    )
+  
+  # Exact inverse transformation for the secondary temperature axis
+  temperature_inverse <- function(y) {
+    (y - y_limits[1]) /
+      diff(y_limits) *
+      diff(temperature_limits) +
+      temperature_limits[1]
+  }
+  
   p <- ggplot() +
     geom_line(
       data = temperature_trace,
       aes(x = time, y = temperature_scaled),
-      inherit.aes = FALSE,
       colour = "grey35",
       linewidth = 0.7,
       linetype = "22",
-      alpha = 0.45
+      alpha = 0.55
     ) +
     geom_line(
       data = plot_data,
@@ -779,54 +816,72 @@ concept_timeseries_column <- function(species_df, temperature_df, title, show_x 
       size = 3.4
     ) +
     scale_colour_manual(values = concept_species_colours, drop = FALSE) +
-    theme_clean(12) +
+    scale_y_continuous(
+      limits = y_limits,
+      name = "Performance",
+      sec.axis = sec_axis(
+        trans = ~ temperature_inverse(.),
+        name = "Temperature (°C)",
+        breaks = seq(10, 30, by = 5)
+      )
+    ) +
+    theme_clean(20) +
     labs(
       title = title,
       x = "Time step",
-      y = "Performance",
       colour = "Species"
     )
-
+  
   if (!show_x) {
     p <- p + theme(axis.title.x = element_blank())
   }
-
+  
   p
 }
 
+# Remove this one if you do not want to show it
 concept_species_sets <- concept_species_sets[
   names(concept_species_sets) != "Cool-skewed optima"
 ]
 
-concept_figure_rows <- imap(concept_species_sets, function(species_df, community_label) {
-  row_index <- match(community_label, names(concept_species_sets))
-  show_title <- row_index == 1
-  show_x <- row_index == length(concept_species_sets)
-
-  concept_curve_column(
-    species_df,
-    community_label,
-    show_title = show_title,
-    show_x = show_x
-  ) |
-    concept_timeseries_column(
+concept_figure_rows <- imap(
+  concept_species_sets,
+  function(species_df, community_label) {
+    row_index <- match(community_label, names(concept_species_sets))
+    show_title <- row_index == 1
+    show_x <- row_index == length(concept_species_sets)
+    
+    concept_curve_column(
       species_df,
-      concept_null_temperatures,
-      title = if (show_title) "Null CP over uniform temperatures" else NULL,
+      community_label,
+      show_title = show_title,
       show_x = show_x
     ) |
-    concept_timeseries_column(
-      species_df,
-      concept_actual_temperatures,
-      title = if (show_title) "Actual CP over experienced temperatures" else NULL,
-      show_x = show_x
-    )
-})
+      concept_timeseries_column(
+        species_df,
+        concept_null_temperatures,
+        title = if (show_title) "Null CP over uniform temperatures" else NULL,
+        show_x = show_x
+      ) |
+      concept_timeseries_column(
+        species_df,
+        concept_actual_temperatures,
+        title = if (show_title) "Actual CP over experienced temperatures" else NULL,
+        show_x = show_x
+      )
+  }
+)
 
-wrap_plots(concept_figure_rows, ncol = 1) +
+concept_figure <- wrap_plots(concept_figure_rows, ncol = 1) +
   plot_layout(guides = "collect") +
-  plot_annotation(tag_levels = "a", tag_prefix = "(", tag_suffix = ")") &
+  plot_annotation(
+    tag_levels = "a",
+    tag_prefix = "(",
+    tag_suffix = ")"
+  ) &
   theme(legend.position = "none")
+
+concept_figure
 ```
 
 Figure 1, conceptual-community version. This alternative uses 3 idealised communities with widely spaced, tightly clustered, or bimodal species optima. The layout is the same as in the empirical version: species-level performance and summed CP curves are shown in the first column, null-uniform CP time series and CVs in the second column, and actual-environment CP time series and CVs in the third column. Dashed grey lines in the time-series panels show the temperature sequence rescaled to the plotting height.
@@ -1123,6 +1178,17 @@ format_experiment_label <- function(x) {
 }
 
 case_spec_value <- function(case_spec, path, default = NA) {
+  # Current publication outputs store treatment values as a flat named list
+  # (for example, `traits.birth_optimum.mean`). Older outputs used nested
+  # `case_spec` lists, so retain support for both layouts.
+  if (is.list(case_spec) && !is.null(case_spec[[path]])) {
+    value <- case_spec[[path]]
+    if (length(value) == 1) {
+      return(value)
+    }
+    return(default)
+  }
+
   parts <- strsplit(path, ".", fixed = TRUE)[[1]]
   value <- case_spec
   for (part in parts) {
@@ -1137,9 +1203,19 @@ case_spec_value <- function(case_spec, path, default = NA) {
   value
 }
 
+case_spec_records <- function(data) {
+  if ("case_spec" %in% names(data)) {
+    return(data$case_spec)
+  }
+  if ("treatment_values" %in% names(data)) {
+    return(data$treatment_values)
+  }
+  stop("Simulation data contain neither `case_spec` nor `treatment_values`.")
+}
+
 case_spec_numeric <- function(data, path, default = NA_real_) {
   vapply(
-    data$case_spec,
+    case_spec_records(data),
     function(spec) as.numeric(case_spec_value(spec, path, default)),
     numeric(1)
   )
@@ -1147,7 +1223,7 @@ case_spec_numeric <- function(data, path, default = NA_real_) {
 
 case_spec_character <- function(data, path, default = NA_character_) {
   vapply(
-    data$case_spec,
+    case_spec_records(data),
     function(spec) as.character(case_spec_value(spec, path, default)),
     character(1)
   )
@@ -1172,7 +1248,12 @@ standardise_experiment <- function(experiment) {
   dat <- read_experiment(experiment)
 
   if (grepl("^LV", experiment)) {
-    labels <- case_spec_character(dat, "interactions.selected.label")
+    labels <- if ("interaction_treatment_label" %in% names(dat) &&
+                  any(!is.na(dat$interaction_treatment_label))) {
+      as.character(dat$interaction_treatment_label)
+    } else {
+      case_spec_character(dat, "interactions.selected.label")
+    }
     dat |>
       mutate(
         treatment_label = labels,
@@ -1596,16 +1677,16 @@ panel_a /
   )
 ```
 
-Figure 2. Performance of CP-based forecasts in four simulation runs. (a) Grouped \(R^2\) for actual CP variability, null CP variability, and trait summaries across interaction-strength or resource-sharing gradients. Lotka-Volterra CPs use raw performance; consumer-resource CPs use viability. (b) Random-subset robustness. (c) Scaled random-forest permutation importance. (d) Observed versus out-of-bag random-forest predictions.
+Figure 2. Performance of community-performance-based forecasts across four simulation runs. (a) Explanatory power of actual community-performance variability, null community-performance variability, and trait summaries for temporal variability in total community abundance. Separate linear models were fitted within each simulation run, interaction-strength or resource-sharing treatment, and temperature time series. Small points are the resulting grouped \(R^2\) values; large points and horizontal bars show the median and 50% and 80% quantile intervals, and shaded half-eye distributions show their density. For the Lotka--Volterra (LV) runs, the horizontal axis is nominal interspecific interaction strength; for the consumer--resource (CR) runs, it is shared-resource use, from entirely private resources (0) to fully shared resource use (1). Actual community performance is evaluated over the experienced temperature sequence, whereas null community performance is evaluated over a uniform distribution spanning the environmental range. LV community performance is summed intrinsic growth rate; CR community performance is the number of species with positive intrinsic growth. The trait-summary model contains absolute mean thermal mismatch, the among-species standard deviation of thermal optima, and their interaction. (b) Robustness of the actual community-performance relationship when each run is randomly partitioned into subsets of approximately 25 communities; histograms and density curves show subset \(R^2\) values. (c) Permutation importance from 1,000-tree random forests containing actual and null community-performance variability, mean thermal mismatch, thermal-optimum spread, richness, and interaction strength or resource sharing. Importance is scaled within each run so that its largest value equals one. (d) Observed total-abundance variability against out-of-bag random-forest predictions. Points represent communities, solid lines are linear fits, dashed lines show the 1:1 relationship, and labels give out-of-bag \(R^2\). LV 1 uses asymmetric uniform competition, LV 2 symmetric log-normal competition, CR 1 deterministic resource sharing, and CR 2 stochastic beta-distributed resource sharing.
 
 # Figure 3
 
 ```{r figure-3-prep, include=FALSE}
 # Load raw data sets
 # Load raw data sets
-ts_df <- read.csv("~/Documents/GitHub/CPCs_predict_CommunityStability/new_empirical_study/data/combined_timeseries_df.csv")
+ts_df <- read.csv(file.path(empirical_root, "data", "combined_timeseries_df.csv"))
 
-TPC_timeseries <- read.csv("~/Documents/GitHub/CPCs_predict_CommunityStability/new_empirical_study/data/TPC_timeseries_df.csv")
+TPC_timeseries <- read.csv(file.path(empirical_root, "data", "TPC_timeseries_df.csv"))
 
 ts_df_raw <- ts_df
 TPC_timeseries_raw <- TPC_timeseries

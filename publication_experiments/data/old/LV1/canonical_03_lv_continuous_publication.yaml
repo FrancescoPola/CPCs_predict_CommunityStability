@@ -1,10 +1,10 @@
 experiment:
-  name: LV1
-  description: "LV1: large discrete LV publication experiment with asymmetric uniform competition and compact summaries only."
+  name: LV3
+  description: "LV3: continuous-time LV analogue of LV1 with asymmetric uniform competition and compact summaries only."
   random_seed: 1234
 
 model:
-  type: lv_discrete
+  type: lv_continuous
 
 community:
   richness: 4
@@ -79,9 +79,17 @@ environment:
     one_over_f_gamma: 0.8
 
 simulation:
-  burn_in_duration: 1000
-  experiment_duration: 1000
+  burn_in_duration: 200
+  experiment_duration: 2000
+  temperature_interpolation: linear
   immigration_rate: 0.1
+  immigration_mode: continuous
+  ode:
+    method: lsoda
+    rtol: 1e-6
+    atol: 1e-8
+    max_step: 1
+  blowup_threshold: 1e12
   initial_abundance_seed_base: 4242
 
 output:

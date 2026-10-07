@@ -1,0 +1,49 @@
+
+
+your tasks:
+1. review the original submission document in the folder "old"
+2. review the new submission documents in the folder "new"
+3. make new .Rmd document detailing the changes
+4. review the comments from referees
+5. draft the point by point response in a new document following the instructions and ideas below
+
+
+
+We submitted a paper to Nature. It went through review. They are in the file called "Referee comments". 
+
+We are writing a point by point response. We have the idea to structure the point by point response in the following themes:
+- Novelty
+- Framing
+- Superficiality 
+- New simulations models
+- New analytical findings 
+- New experiment
+- Miscellaneaus
+
+Each of the reviewer points would then be word for word put in one of each of the themes.
+
+In each of the themes, we want to have a 100 words first paragraph summarising what we have done and why it is important, with emphasis placed on the importance (why this is important). 
+
+Here some of our thoughts on some of the themes:
+
+Novelty: we have a new a measure of response diversity for which we have an analytical proof that can explain 100% of community variability, despite not incuding any information about interactions.
+         Simulations show that explanatory power remains above 75% across a wide range of model assumptions and types, including interaction strength and resource partitioning.
+         Experimental validation 
+         Previous work has shown some elements of this. None have or could shown this extremely high explanatory / predictive power and insensitivity of it to interactions and resource partitioning.
+         Give novelty relative to Loreau and de Mazancout (2008 and 2013), Ives (1999) and Danet (2025)
+
+
+Framing: completely reframed. Clarity about stability component. Avoidance of irrelevant comparisions and paradigm statements and shifts. Simple framing that let the results shine thorugh.
+
+Superficiality: Added a lot of depth (more interactions treatment within model type) and breath (new model type) to the simulaiton. New experiment. New analytical work. 
+
+New simulations models: one of the most important point of having LV and CR was learning that the CV(CP) needs to be based on the characteristic of the model. This showed us that CV(CP) can be       generalised beyond the assumptions of the LV case. 
+                       One of the things we learned from the new simualtions is the important of interactions distribution for predicting mapping of CV(CP) to CV(biomass). This led us to add another interaction treatment (lognormal). Nevertheless, conclusions were not affacted. 
+
+
+New analytical findings: we added a completely new element to the work. Use supplement 4 for this. This is important because it actually gives us a theoretical expectations for why CV(CP) should work as well as it does. 
+
+New experiment: We did a new experiment. Experimental design based on CV(CP). 1/f matches the simulations environment. Design closely matched to the assumptions and the results show even stronger support for the theory and simulation work. 
+
+Miscellaneaus: The reviewer commented that a good aspect of the paper was the combination of approaches (e.g. simulations and empirical)
+
