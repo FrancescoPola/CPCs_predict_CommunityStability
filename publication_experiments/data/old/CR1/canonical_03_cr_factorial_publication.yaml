@@ -1,11 +1,6 @@
 experiment:
-<<<<<<<< HEAD:publication_experiments/data/samp_int_0.01/CR1/experiment.yaml
-  name: CR1
-  description: "CR1: rate-matched large continuous consumer-resource publication experiment with deterministic shared-to-private resource specialisation and compact summaries only."
-========
   name: CR3
   description: "CR3: rate-matched large continuous consumer-resource publication experiment with deterministic shared-to-private resource specialisation and compact summaries only."
->>>>>>>> 310ecf0efcfeb0d272064f276eccc4a59da5572b:publication_experiments/data/old/CR1/canonical_03_cr_factorial_publication.yaml
   random_seed: 20260618
 
 model:
@@ -52,8 +47,7 @@ environment:
   temperature:
     mean: 20
     sd: 4
-    one_over_f_gamma: 0.8
-    sample_interval: 0.01
+    one_over_f_gamma: 1.5
 
 simulation:
   burn_in_duration: 200
@@ -64,10 +58,9 @@ simulation:
   temperature_interpolation: linear
   ode:
     method: lsoda
-    rtol: 1e-2
-    atol: 1e-4
+    rtol: 1e-6
+    atol: 1e-8
     max_step: 1
-    maxsteps: 50000
   blowup_threshold: 1e12
   negative_tolerance: 1e-8
   initial_abundance_seed_base: 4242
@@ -93,7 +86,7 @@ treatments:
     community.richness: [4, 8, 12]
     traits.uptake_optimum.mean: [16, 20, 24]
     traits.uptake_optimum.range: [0, 2, 4]
-    traits.uptake_width.mean: [3, 6, 9]
+    traits.uptake_width.mean: [1, 2, 3]
     traits.uptake_width.range: [0.5, 1.25]
     resources.private_use.mean: [0, 0.25, 0.5, 0.75, 1]
 

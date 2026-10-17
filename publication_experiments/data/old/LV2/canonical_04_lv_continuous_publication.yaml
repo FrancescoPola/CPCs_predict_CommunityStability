@@ -1,11 +1,6 @@
 experiment:
-<<<<<<<< HEAD:publication_experiments/data/samp_int_1/LV2/experiment.yaml
-  name: LV2
-  description: "LV2: continuous-time LV publication experiment with symmetric log-normal competition and compact summaries only."
-========
   name: LV4
   description: "LV4: continuous-time LV analogue of LV2 with symmetric log-normal competition and compact summaries only."
->>>>>>>> 310ecf0efcfeb0d272064f276eccc4a59da5572b:publication_experiments/data/old/LV2/canonical_04_lv_continuous_publication.yaml
   random_seed: 1234
 
 model:
@@ -81,7 +76,6 @@ environment:
     mean: 20
     sd: 4
     one_over_f_gamma: 0.8
-    sample_interval: 1
 
 simulation:
   burn_in_duration: 200
@@ -91,13 +85,8 @@ simulation:
   immigration_mode: continuous
   ode:
     method: lsoda
-<<<<<<<< HEAD:publication_experiments/data/samp_int_1/LV2/experiment.yaml
-    rtol: 1e-2
-    atol: 1e-4
-========
     rtol: 1e-6
     atol: 1e-8
->>>>>>>> 310ecf0efcfeb0d272064f276eccc4a59da5572b:publication_experiments/data/old/LV2/canonical_04_lv_continuous_publication.yaml
     max_step: 1
   blowup_threshold: 1e12
   initial_abundance_seed_base: 4242
@@ -116,7 +105,7 @@ parallel:
   workers: available_cores_minus_1
   environments: true
   simulations: true
-  community_measures: false
+  community_measures: true
 
 treatments:
   values:
