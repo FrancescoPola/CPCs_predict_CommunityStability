@@ -22,10 +22,10 @@ experiment_folder_location <- normalizePath(
 experiments <- data.frame(
   experiment_name = c("LV1", "LV2", "CR1", "CR2"),
   experiment_design_filename = c(
-    "canonical_01_lv_factorial_publication.yaml",
-    "canonical_02_lv_factorial_publication.yaml",
-    "canonical_01_cr_factorial_publication.yaml",
-    "canonical_02_cr_factorial_publication.yaml"
+    "experiment.yaml",
+    "experiment.yaml",
+    "experiment.yaml",
+    "experiment.yaml"
   ),
   stringsAsFactors = FALSE
 )

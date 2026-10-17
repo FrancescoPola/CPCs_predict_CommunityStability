@@ -10,10 +10,10 @@ old output files so the experiments can be rerun with the rewritten
 
 | Folder | YAML file | Purpose | Main treatment mode | Expected cases |
 | --- | --- | --- | --- | ---: |
-| `data/LV1` | `canonical_01_lv_factorial_publication.yaml` | Larger discrete LV publication experiment, compact summaries only | Uniform asymmetric competition gradient | 7290 |
-| `data/LV2` | `canonical_02_lv_factorial_publication.yaml` | Larger discrete LV publication experiment, compact summaries only | Log-normal symmetric competition gradient | 7290 |
-| `data/CR1` | `canonical_01_cr_factorial_publication.yaml` | Larger consumer-resource publication experiment, compact summaries only | Deterministic private-resource-use gradient | 7290 |
-| `data/CR2` | `canonical_02_cr_factorial_publication.yaml` | Larger consumer-resource publication experiment, compact summaries only | Stochastic beta private-resource-use gradient | 7290 |
+| `data/LV1` | `experiment.yaml` | Larger continuous-time LV publication experiment, compact summaries only | Uniform asymmetric competition gradient | 7290 |
+| `data/LV2` | `experiment.yaml` | Larger continuous-time LV publication experiment, compact summaries only | Log-normal symmetric competition gradient | 7290 |
+| `data/CR1` | `experiment.yaml` | Larger consumer-resource publication experiment, compact summaries only | Deterministic private-resource-use gradient | 7290 |
+| `data/CR2` | `experiment.yaml` | Larger consumer-resource publication experiment, compact summaries only | Stochastic beta private-resource-use gradient | 7290 |
 
 ## Run
 

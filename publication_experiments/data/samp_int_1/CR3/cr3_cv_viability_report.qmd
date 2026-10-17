@@ -1,0 +1,210 @@
+---
+title: "CR3 Biomass and Viability CP"
+format:
+  html:
+    toc: true
+    embed-resources: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(purrr)
+library(knitr)
+library(here)
+
+here::i_am("CPCs_predict_CommunityStability/publication_experiments/data/samp_int_1/CR3/cr3_cv_viability_report.qmd")
+
+cr3_dir <- here::here("CPCs_predict_CommunityStability", "publication_experiments", "data", "samp_int_1", "CR3")
+data_path <- file.path(cr3_dir, "community_measures.RDS")
+
+if (!file.exists(data_path)) {
+  stop("community_measures.RDS is not present in this folder.")
+}
+
+extract_treatment_value <- function(values, name) {
+  if (is.null(values) || is.null(values[[name]])) {
+    return(NA_real_)
+  }
+  as.numeric(values[[name]])
+}
+
+r2_lm <- function(data, response) {
+  data <- data |>
+    filter(
+      is.finite(.data[[response]]),
+      is.finite(viability_cv_cp)
+    )
+
+  if (nrow(data) < 3 || dplyr::n_distinct(data$viability_cv_cp) < 2) {
+    return(NA_real_)
+  }
+
+  summary(lm(stats::reformulate("viability_cv_cp", response), data = data))$r.squared
+}
+
+cr3 <- readRDS(data_path) |>
+  mutate(
+    uptake_width_mean = map_dbl(
+      treatment_values,
+      extract_treatment_value,
+      name = "traits.uptake_width.mean"
+    ),
+    viability_cv_cp = as.numeric(cv_community_viability_binary_info),
+    cv_total_abundance = as.numeric(cv_total_abundance),
+    mean_total_abundance = as.numeric(mean_total_abundance)
+  ) |>
+  filter(
+    is.finite(cv_total_abundance),
+    is.finite(mean_total_abundance),
+    is.finite(viability_cv_cp),
+    is.finite(uptake_width_mean)
+  )
+
+overall_cv_r2 <- r2_lm(cr3, "cv_total_abundance")
+uptake_width_2_3_6_9 <- cr3 |>
+  filter(uptake_width_mean %in% c(2, 3, 6, 9))
+uptake_width_2_3_6_9_r2 <- r2_lm(uptake_width_2_3_6_9, "cv_total_abundance")
+overall_mean_r2 <- r2_lm(cr3, "mean_total_abundance")
+
+r2_by_width <- imap_dfr(
+  split(cr3, cr3$uptake_width_mean),
+  function(data, width) {
+    tibble(
+      uptake_width_mean = as.numeric(width),
+      n = nrow(data),
+      r_squared = r2_lm(data, "cv_total_abundance")
+    )
+  }
+) |>
+  arrange(uptake_width_mean)
+
+mean_r2_by_width <- imap_dfr(
+  split(cr3, cr3$uptake_width_mean),
+  function(data, width) {
+    tibble(
+      uptake_width_mean = as.numeric(width),
+      n = nrow(data),
+      r_squared = r2_lm(data, "mean_total_abundance")
+    )
+  }
+) |>
+  arrange(uptake_width_mean)
+```
+
+This report uses binary viability community performance variability, `cv_community_viability_binary_info`, as the consumer-resource viability $CV(CP)$ metric. Community stability is shown as `cv_total_abundance`.
+
+## CV Total Biomass
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(cr3, aes(x = viability_cv_cp, y = cv_total_abundance)) +
+  geom_point(alpha = 0.35, size = 1.2) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.8, colour = "black") +
+  labs(
+    x = "Viability CV CP",
+    y = "CV total biomass",
+    title = "CR3: CV total biomass versus viability CV CP",
+    subtitle = paste0("Overall R-squared = ", round(overall_cv_r2, 3))
+  ) +
+  theme_bw()
+```
+
+```{r}
+#| fig-width: 9
+#| fig-height: 6.5
+
+ggplot(
+  cr3,
+  aes(x = viability_cv_cp, y = cv_total_abundance)
+) +
+  geom_point(alpha = 0.35, size = 0.9) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.6, colour = "black") +
+  facet_wrap(~ uptake_width_mean, labeller = label_both, scales = "free") +
+  labs(
+    x = "Viability CV CP",
+    y = "CV total biomass",
+    title = "CR3: CV total biomass relationship by uptake width mean treatment"
+  ) +
+  theme_bw()
+```
+
+```{r}
+r2_table <- bind_rows(
+  tibble(
+    treatment = c("Overall", "uptake_width_mean in {2, 3, 6, 9}"),
+    n = c(nrow(cr3), nrow(uptake_width_2_3_6_9)),
+    r_squared = c(overall_cv_r2, uptake_width_2_3_6_9_r2)
+  ),
+  r2_by_width |>
+    transmute(
+      treatment = paste0("uptake_width_mean = ", uptake_width_mean),
+      n,
+      r_squared
+    )
+) |>
+  mutate(r_squared = round(r_squared, 4))
+
+kable(r2_table, align = c("l", "r", "r"))
+```
+
+## Mean Total Biomass
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+
+ggplot(cr3, aes(x = viability_cv_cp, y = log10(mean_total_abundance), colour = as.factor(uptake_width_mean))) +
+  geom_point(alpha = 0.35, size = 1.2) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.8, colour = "black") +
+  labs(
+    x = "Viability CV CP",
+    y = "Mean total biomass",
+    title = "CR3: mean total biomass versus viability CV CP",
+    subtitle = paste0("Overall R-squared = ", round(overall_mean_r2, 3))
+  ) +
+  theme_bw()
+```
+
+```{r}
+#| fig-width: 9
+#| fig-height: 6.5
+
+ggplot(
+  cr3,
+  aes(x = viability_cv_cp, y = log10(mean_total_abundance))) +
+  geom_point(alpha = 0.35, size = 0.9) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.6, colour = "black") +
+  facet_wrap(~ uptake_width_mean, labeller = label_both, scales = "free_x") +
+  labs(
+    x = "Viability CV CP",
+    y = "Mean total biomass",
+    title = "CR3: mean total biomass relationship by uptake width mean treatment"
+  ) +
+  theme_bw()
+```
+
+```{r}
+mean_r2_table <- bind_rows(
+  tibble(
+    treatment = "Overall",
+    n = nrow(cr3),
+    r_squared = overall_mean_r2
+  ),
+  mean_r2_by_width |>
+    transmute(
+      treatment = paste0("uptake_width_mean = ", uptake_width_mean),
+      n,
+      r_squared
+    )
+) |>
+  mutate(r_squared = round(r_squared, 4))
+
+kable(mean_r2_table, align = c("l", "r", "r"))
+```

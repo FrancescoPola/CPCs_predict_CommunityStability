@@ -38,8 +38,9 @@ library(tibble)
 library(tidyr)
 library(viridis)
 library(viridisLite)
+library(here)
 
-repo_root <- "/Users/francesco/Documents/GitHub/CPCs_predict_CommunityStability"
+repo_root <- here()
 empirical_root <- file.path(repo_root, "new_empirical_study")
 publication_root <- file.path(repo_root, "publication_experiments", "data")
 literature_file_path <- file.path(repo_root, "literature_review", "data", "literature_file.xls")
@@ -1603,9 +1604,9 @@ Figure 2. Performance of CP-based forecasts in four simulation runs. (a) Grouped
 ```{r figure-3-prep, include=FALSE}
 # Load raw data sets
 # Load raw data sets
-ts_df <- read.csv("~/Documents/GitHub/CPCs_predict_CommunityStability/new_empirical_study/data/combined_timeseries_df.csv")
+ts_df <- read.csv(here("new_empirical_study/data/combined_timeseries_df.csv"))
 
-TPC_timeseries <- read.csv("~/Documents/GitHub/CPCs_predict_CommunityStability/new_empirical_study/data/TPC_timeseries_df.csv")
+TPC_timeseries <- read.csv(here("new_empirical_study/data/TPC_timeseries_df.csv"))
 
 ts_df_raw <- ts_df
 TPC_timeseries_raw <- TPC_timeseries

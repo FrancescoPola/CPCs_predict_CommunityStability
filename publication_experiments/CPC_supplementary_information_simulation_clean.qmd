@@ -56,7 +56,7 @@ library(tibble)
 library(tidyr)
 library(viridisLite)
 
-experiment_root <- "/Users/francesco/Documents/GitHub/CPCs_predict_CommunityStability/publication_experiments/data"
+experiment_root <- file.path(getwd(), "data/samp_int_1")
 selected_experiments <- c("LV1", "LV2", "CR1", "CR2")
 
 `%||%` <- function(x, y) {
@@ -118,18 +118,41 @@ case_spec_value <- function(case_spec, path, default = NA) {
   value
 }
 
+treatment_value <- function(treatment_values, path, default = NA) {
+  if (!is.list(treatment_values) || is.null(treatment_values[[path]])) {
+    return(default)
+  }
+  value <- treatment_values[[path]]
+  if (length(value) != 1) {
+    return(default)
+  }
+  value
+}
+
+case_or_treatment_value <- function(case_spec, treatment_values, path, default = NA) {
+  value <- case_spec_value(case_spec, path, default)
+  if (identical(value, default) || (length(value) == 1 && is.na(value))) {
+    value <- treatment_value(treatment_values, path, default)
+  }
+  value
+}
+
 case_spec_numeric <- function(data, path, default = NA_real_) {
+  case_specs <- if ("case_spec" %in% names(data)) data$case_spec else vector("list", nrow(data))
+  treatment_values <- if ("treatment_values" %in% names(data)) data$treatment_values else vector("list", nrow(data))
   vapply(
-    data$case_spec,
-    function(spec) as.numeric(case_spec_value(spec, path, default)),
+    seq_len(nrow(data)),
+    function(i) as.numeric(case_or_treatment_value(case_specs[[i]], treatment_values[[i]], path, default)),
     numeric(1)
   )
 }
 
 case_spec_character <- function(data, path, default = NA_character_) {
+  case_specs <- if ("case_spec" %in% names(data)) data$case_spec else vector("list", nrow(data))
+  treatment_values <- if ("treatment_values" %in% names(data)) data$treatment_values else vector("list", nrow(data))
   vapply(
-    data$case_spec,
-    function(spec) as.character(case_spec_value(spec, path, default)),
+    seq_len(nrow(data)),
+    function(i) as.character(case_or_treatment_value(case_specs[[i]], treatment_values[[i]], path, default)),
     character(1)
   )
 }
@@ -155,6 +178,9 @@ standardise_experiment <- function(experiment) {
 
   if (grepl("^LV", experiment)) {
     labels <- case_spec_character(dat, "interactions.selected.label")
+    if ("interaction_treatment_label" %in% names(dat)) {
+      labels <- ifelse(is.na(labels), as.character(dat$interaction_treatment_label), labels)
+    }
     dat |>
       mutate(
         treatment_label = labels,
