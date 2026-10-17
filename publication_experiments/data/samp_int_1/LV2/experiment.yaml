@@ -1,6 +1,7 @@
 experiment:
   name: LV2
   description: "LV2: continuous-time LV publication experiment with symmetric log-normal competition and compact summaries only."
+
   random_seed: 1234
 
 model:
@@ -88,6 +89,7 @@ simulation:
     method: lsoda
     rtol: 1e-2
     atol: 1e-4
+
     max_step: 1
   blowup_threshold: 1e12
   initial_abundance_seed_base: 4242

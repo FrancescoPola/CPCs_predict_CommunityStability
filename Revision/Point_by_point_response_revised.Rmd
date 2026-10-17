@@ -1,0 +1,263 @@
+---
+title: "Response to the referees"
+subtitle: "Community performance curves predict temporal stability despite interaction effects"
+date: "2026-09-30"
+output:
+  word_document: default
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+We thank the referees for their detailed and constructive assessments. Their comments led us to rewrite the manuscript, narrow its scope to the temporal variability of aggregate community properties, expand the simulation programme, develop a new analytical derivation, and conduct a purpose-designed experiment. Below, every referee comment is reproduced verbatim and grouped by the theme it primarily concerns. Our response follows each comment. References to sections and figures refer to the revised submission.
+
+Text in square brackets beginning **AUTHOR CHECK** identifies a statement that must be verified or resolved before this response is submitted.
+
+# Novelty
+
+The revised manuscript defines its novelty as predictive rather than oppositional. Earlier theory established that environmental responses, population variability, synchrony, and interactions jointly shape temporal stability. We now ask whether measured species response curves retain enough aggregate information to forecast community variability without estimating an interaction matrix. The contribution is the combination of a response-curve metric, a Lotka–Volterra derivation, tests across two model classes, and experimental validation. Actual community-performance variability explains at least 75% of simulated variation across interaction treatments and 67% experimentally. No cited predecessor combines this metric, cross-model generalisation, analytical conditions, and pre-registered community selection in one framework.
+
+## Referee 1 concluding assessment
+
+> Taking all of this together, I struggle to see where the core novelty sits in its current framing. I again applaud the authors on an ambitious topic of combining a literature review, simulations, and experiments. But if someone's interested in predicting biomass stability and has performance curves in hand, they can already calculate a whole suite of metrics and don't really need to be limited to one. And if they've got morphological or physiological traits beyond aggregate performance optima, they could in principle parameterise an actual LV model and estimate a_ij directly. If they don't have any of that, then the paper needs to engage more deeply with theory to make the case that this metric helps us with our understanding of stability, and/or is a causal driver of ecosystem stability rather than just a useful summary of the community. As it stands it sits somewhere in between, so being clearer about the theoretical framing and intended application of this would help clarify the overall value and novelty of this work.
+
+**Response.** We agree that the original manuscript did not locate the contribution precisely enough. We no longer present community-performance variability as a replacement for interaction-based theory or as a proven causal driver. We present it as a predictor of aggregate temporal variability when species response curves are available but a complete interaction matrix is not. The revised Introduction states this intended application, and the Discussion distinguishes prediction of an aggregate property from prediction of species-specific dynamics.
+
+We also added the theoretical and empirical tests requested. Supplementary Information 4 derives the conditions under which community-performance variability should approximate total-abundance variability in the Lotka--Volterra case. Supplementary Information 2 generalises the construction through a model-specific link function and tests it in a consumer--resource model. Finally, the new experiment uses independently estimated thermal performance curves to choose communities before observing their dynamics. Together, these additions establish what the metric contributes beyond calculating another descriptive summary.
+
+Relative to Ives et al. (1999) and Loreau and de Mazancourt (2008, 2013), our contribution is not the general proposition that differential environmental responses can stabilise an aggregate property. Those studies developed the theory of variability, synchrony, and competitive effects. Relative to Danet et al. (2025), our contribution is not the conclusion that response diversity can dominate food-web structure in simulations. Our advance is an operational aggregate constructed from species performance curves, its conditional analytical link to total abundance, its generalisation across direct-competition and consumer--resource models, and a prospective experimental test that does not require fitting the interaction matrix.
+
+## Referee 2 on whether the result is novel
+
+> Even setting aside the choice of continuous- vs discrete-time models, is it even particularly novel to argue that differential variation in growth rates over temperature will create differential variation in total biomass if temperature fluctuates? I'm not so sure. Presumably after the initial 1000 time steps, the simulated communities have reached equilibrium (but see my later point about equilibrium species richness), at which point N^* = A^-1 r where N* is the vector of equilibrium densities, A is the interaction matrix (and A^-1 the inverse thereof), and r is the vector of growth rates at T = 20. If the temperature then begins to fluctuate, the interaction matrix will then "convert" fluctuations in r into fluctuations in N (and if the fluctuations in T are big and quick enough the system may never return precisely to equilibrium densities). This is all fully consistent with results already shown elsewhere in much greater detail (e.g., Loreau & Mazancourt 2008 and Loreau & Mazancourt 2013). The key addition here seems, to me, to be little more than allowing the strength of species' responses to fluctuating environmental conditions (sigma_ei sensu Loreau & Mazancourt) to be variable.
+
+**Response.** We agree that the qualitative link between heterogeneous environmental responses and aggregate biomass variability is established. We have removed language implying that this general principle is new. The revised manuscript instead tests a quantitative proposition: an aggregate calculated only from independently measured response curves can explain most between-community variation in aggregate temporal variability even after interactions reshape the component populations.
+
+We made the relationship to prior theory explicit. The new synchrony analysis shows that interactions progressively weaken prediction of realised population synchrony, as expected from Loreau and de Mazancourt, while prediction of aggregate variability remains strong. Supplementary Information 4 begins from the reviewer's equilibrium intuition and derives a weighted relationship among community-performance variability, total-abundance variability, and population-level variability. The result identifies interaction heterogeneity and timescale separation as conditions governing the mapping rather than treating the mapping as self-evident.
+
+# Framing
+
+We rewrote the title, Abstract, Introduction, and Discussion around one outcome: temporal variability of aggregate abundance, biomass, or productivity under environmental fluctuation. The revision separates this outcome from coexistence, persistence, local dynamical stability, and return to equilibrium. We removed the proposed paradigm conflict and now state that interactions alter population variability and covariance while asking whether response structure still predicts their aggregate. Trait summaries are distinguished from nonlinear response shapes, and the literature review has been shortened and moved to Supplementary Information 1. This narrower framing matters because it aligns theory, simulations, experiment, and claims on the same stability component.
+
+## Referee 1 point 1
+
+> The framing leans heavily on traditional modern coexistence theory, i.e., references to work by May and Allesina in the opening paragraph, which are used to motivate why interactions and interaction networks matter for stability. But those papers are really about species stability in the sense of dynamical stability (composition staying constant), not about biomass output staying constant. What's actually being measured here feels much closer to ecosystem-level stability in a diversity-function sense, and the transition between the two in the intro conflates the two, in a sense setting up this paper under the guise of modern coexistence theory but then transitioning to something else entirely. It also means a big body of work ends up getting skipped, most notably the storage effect and related coexistence theory (e.g. Chesson 1994, 10.1006/tpbi.1994.1013), which is essentially the framework the paper is reinventing in more empirical form. There's a lot of derived mathematical work on the storage effect, how environmental fluctuation maintains true community stability that isn't discussed here at all, and the paper would be much stronger if it demonstrated how its results build on and overcome the existing challenges in this area.
+
+**Response.** We agree that the original Introduction conflated distinct stability concepts. The revised title now specifies temporal stability, and the first paragraph defines the outcome as variability through time in an aggregate community or ecosystem property. It explicitly distinguishes this from return to equilibrium, local coexistence, and persistence. We no longer frame the study as a test of modern coexistence theory or claim that community-performance curves replace storage-effect theory. The storage effect asks how environment--competition covariance permits persistence; our question asks how species environmental responses predict variability of their aggregate. Response complementarity alone does not establish a storage effect, and we now keep these questions separate.
+
+## Referee 1 point 2
+
+> Partly because of the above, the literature review is hard to follow and interpret in places. I wasn't sure whether you're restricting to biomass stability (as used in the results here) or species stability (i.e., return to equilibria after perturbation or ability to grow when rare), how you handle traits that act on growth vs traits that parameterise interactions, or how you treat niche vs fitness differences (since combining r and a_ij blurs both). Indeed, around L132 you say species interactions and species responses have rarely been tested together, but both r_i and alpha_ij are central to stability under standard theory and are used throughout stability theory and empirical differences, where interactions give stabilising differences and responses give fitness differences. So I ended up a bit confused about what exactly is being tested and what lit review was actually looking for. More precision in the methods and framing would help a lot, and clarifying exactly what measures of stability are being considered.
+
+**Response.** We now restrict the paper to temporal variability of aggregate abundance or biomass. The revised Methods define the simulation outcome as the coefficient of variation of total abundance and the experimental outcome as the standard deviation of detrended total biomass. We do not interpret these outcomes as invasion growth rates, return rates, or coexistence criteria. We also distinguish environmental response functions from interaction parameters rather than treating them as niche and fitness differences. Detailed review methods and results have been moved to Supplementary Information 1, and the main text now uses the review only to motivate the predictive comparison.
+
+## Referee 1 point 3
+
+> The trait framing in the introduction and in the simulations feels like a bit of a misdirection at times, particularly given the initial framing of stability in the classical species sense. At L80, traits are presented as single things, but classical theory has long been about how multiple traits drive niche and stabilising differences (see Allesina & Levine 2011, 10.1073/pnas.1014428108 for how traits (factors) affect coexistence, or Kraft et al 2015, 10.1073/pnas.1413650112, where multiple traits are explicitly parameterised to separate niche from fitness effects). Framing traits as solely affecting productivity, or rather, simply as summary statistics derived from a performance curve, isn't really accurate to what ecological theory actually does.
+
+**Response.** We agree. The revised Introduction no longer characterises trait-based ecology as relying generally on one trait or as treating traits only as productivity determinants. It makes the narrower point that a mean or variance of thermal optima discards response breadth, skew, overlap, and curvature. We compare community performance with these specific summary metrics because they are the alternatives used in our analysis, not because they exhaust trait-based or coexistence theory. The revised Discussion also states that interactions and response functions may depend on other traits outside the present framework.
+
+## Referee 1 point 7
+
+> I was also surprised not to see more comparisons to traditional stability metrics. I realise some of this traces back to the community vs ecosystem stability issue, but even so, more explicit attention to stabilising vs niche differences in both the sims and the experiment would have gone a long way toward making the case that this approach builds on existing methods.
+
+**Response.** We now define the exact stability component and relate it to the standard decomposition into population variability and synchrony. The revised analyses calculate Loreau--de Mazancourt synchrony for simulated abundance, predicted performance, and experimental biomass. This allows us to show directly that interactions alter realised synchrony even when aggregate variability remains predictable. We do not claim to estimate stabilising and fitness differences, because neither the simulation design nor the experiment is an invasion analysis. We instead state that coexistence metrics answer a different question from temporal variability of an aggregate property.
+
+## Referee 1 point 8
+
+> Because the results are CV of biomass, this feels closer to a diversity-function question than traditional ecological stability, and I'm curious how much of what you're seeing is driven by something like selection bias. If one species happens to grow really fast at a particular temperature, community performance at that T is very large, which also skews the CV of performance. I'm not sure this necessarily mathematically will lead to higher stability, but some exploration of these well-known statistical artifacts and how they should feed into aggregate functioning would help put the metric in context.
+
+**Response.** We agree that the outcome belongs to the biodiversity--ecosystem-functioning tradition of aggregate temporal stability, and the revised framing now says so. Community performance is intentionally sensitive to both complementarity among response curves and dominance by a high-performing species because both change the expected aggregate. The new experiment tests the resulting prediction prospectively across communities selected for low, intermediate, and high community-performance variability. We have also added a mechanistic decomposition into synchrony and population variability. **AUTHOR CHECK:** the supplied revision does not contain a dedicated selection-effect partition. We should not claim that selection bias has been formally excluded unless such an analysis is added.
+
+## Referee 2 on definitions of stability
+
+> As the authors know well, the word "stability" means a myriad different things within the ecology literature. Indeed, there is an argument that, when used without qualifying to which stability someone is actually referring, its use is borderline meaningless. The issue here is that the motivation and exposition of this current manuscript, from the title to conclusion and everywhere in between, hinges critically on the reader knowing precisely how these authors intend to use the term. But by leaving its use largely generic, the onus is left on the reader to determine whether any given mention is consistent with the one that preceded it or whether any given contrast is a comparison of apples with apples or apples with oranges. Consider, for example, the very first sentence of the introduction. The authors cite two different studies that both aim to connect ecological complexity, interaction strengths, and stability; however, their respective definitions of stability are mathematically and statistically completely different. By skipping past or glossing over the underlying differences, these authors run the risk of creating greater confusion rather than greater clarity. Furthermore, ignoring the long-standing differences between different "branches" of stability research in ecology also creates a false dichotomy between "paradigms that prioritise interaction structure and those that emphasise environmental response structure" since researchers who follow either tend to be focused on very different stability "outcomes" in the first place.
+
+**Response.** We agree and have rebuilt the manuscript around this criticism. "Temporal" has been added to the title. The revised opening defines stability as low temporal variability of total abundance, biomass, or productivity under a continuously varying environment. It contrasts this explicitly with local dynamical stability, return to equilibrium, persistence, and coexistence. We removed the false paradigm dichotomy and now ask whether response structure predicts a defined aggregate outcome after interactions have altered component dynamics.
+
+## Referee 2 on aggregate versus species-level outcomes
+
+> Moreover, the comparison between community performance curve and community stability, where community stability is the coefficient of variation in total community abundance, appears to me to completely miss the main "point" of the vast majority of studies whose primary emphasis is on the importance of species interactions on emergent ecological phenomena such as local stability, persistence, coexistence, etc. Namely, the "interactions are important" paradigm is less focused on whether the whole community is abundant---in a temporally static world---or variable---in a temporally variable world---but rather which species are more or less abundant in temporally static or temporally variable worlds. Therefore, just like community weighted mean traits are limited in what they can tell us about the different species that make up a specific community (see L73 in this paper or Brown et al 2014; Clark 2016; Peres-Neto et al 2017), CV in total community abundance doesn't tell us very much about the component abundances that make up that total.
+
+**Response.** We agree. The revised paper no longer treats aggregate temporal variability as a substitute for coexistence, persistence, composition, or species-level prediction. The Discussion now says that detailed interaction matrices may be essential for predicting individual populations even when they are less necessary for forecasting variability of their aggregate. We also added the synchrony analysis precisely to show the limitation: as competition or resource sharing increases, performance curves become poorer predictors of realised component synchrony even though prediction of total-abundance variability remains strong.
+
+## Referee 3 point 1
+
+> The authors frame this metric as one that resolves a long-standing debate in the ecological literature between whether community stability is driven by “interactions” or “species responses” but it is very difficult to tell what the authors mean with these terms. They remain undefined with few examples given even when discussing the theoretical model. I am actually not even sure if I agree with this framing of the paper because many of the more recent studies of community stability appear to me to be relatively interaction neutral, depending on the authors definition of interaction here, and include terms for species responses like species asynchrony and population stability. For example – the partitioning scheme of Shaopeng Wang or the paper from Zhao et al. in 2023 which found that compensatory dynamics were not particularly strong drivers of community stability. In order for me to understand where this effort fits, it would be helpful if clear definitions and examples were given so that I can at least place this effort in a relatively crowded literature. Right now – none of these other efforts are cited, partially understandable given the Nature citation limit, which gives the impression that this is based on a relatively out of date premise. The sentence that really highlights this for me is on lines 62-64 given the above citations and without really understanding what the authors mean by interactions.
+
+**Response.** We removed the claim that the metric resolves a long-standing debate. The revised Introduction defines environmental responses as species-specific performance functions across an abiotic gradient and interactions as effects of other species or shared resources on realised dynamics. It situates the analysis within temporal stability, population variability, and synchrony, citing Ives et al. (1999), Loreau and de Mazancourt (2008, 2013), Thibaut and Connolly (2013), and recent response-diversity studies. The paper now tests whether one defined source of information predicts one defined aggregate outcome.
+
+## Referee 3 point 2
+
+> I am missing some key context as to how only using trait moments would provide a key limitation to understanding species responses. Why are breadth, height, asymmetry, etc so important for predicting species responses to the environment? What information do they provide? There is also a difference between the bottleneck being that information is being based on trait “moments” and information being based on single traits. Both of which are important points but are mixed in the paragraph on lines 72 to 82. I actually find this argument more compelling as a problem to be solved than resolving the “long-standing debate” between is it interactions or species environmental responses. There are many places where this metric can be useful outside of just thinking about stability and eliminating the argument re: interactions vs. species responses would save the authors valuable space to be able to frame and introduce this metric in a way that is more understandable.
+
+**Response.** We adopted this recommendation. The revised Introduction explains that an optimum identifies where performance peaks but not how rapidly it declines, whether tolerance is broad or narrow, whether the curve is asymmetric, or how curves overlap. These features determine how a distribution of environmental conditions is converted into temporal performance variation. We now distinguish the loss caused by using a single trait from the further loss caused by summarising a community distribution with only its mean or variance. This problem, rather than a paradigm conflict, motivates the community-performance curve.
+
+## Referee 3 point 3
+
+> I don’t fully understand how using a trait-based metric can represent the species response to the environment WITHOUT interactions. The environment in the case of any organism will also include the sum total of all interactions with the other organisms around. Is it about the choice of trait perhaps? I would argue any trait will have some signature of interaction even if we don’t know what that signature looks like.
+
+**Response.** We have clarified that the framework uses fundamental response curves measured or specified without interspecific effects; it does not claim that realised responses contain no interaction signature. Interactions transform these potential responses into realised abundance dynamics. The revised simulations and experiment make that separation explicit: performance curves are defined independently, while competition or resource depletion acts during community dynamics. The predictive question is how much of the aggregate signal survives that transformation.
+
+## Referee 3 point 4
+
+> Right now – the authors jump directly into the perceived debate in the stability literature but I found the missing context for this quite jarring. The last paragraphs of the discussion do a really good job of summarizing why studies like this are important and especially for a general readership including this at the beginning will feel less like this paper is about an internecine struggle.
+
+**Response.** We rewrote the opening accordingly. The manuscript now begins with the practical challenge of forecasting aggregate ecosystem properties under environmental fluctuation, defines the stability component, and then introduces species response shape as a source of predictive information. The former debate-focused opening and paradigm language have been removed.
+
+## Referee 3 point 5
+
+> If I had to guess based on the search terms – I would guess that the literature review is likely missing quite a bit of the literature that sits within the biodiversity-ecosystem functioning literature. These papers tend to be quite interaction agnostic and may be why I feel a bit uncertain about the premise of the debate in the introduction especially since the paragraph on lines 55 to 60 introduces the biodiversity-stability relationship.
+
+**Response.** We agree that the search was not a comprehensive review of the biodiversity--ecosystem-functioning literature. We removed the debate premise and moved the review to Supplementary Information 1, where its search scope and inclusion criteria are explicit. The main text now uses it only to note that direct comparisons within the specified search were uncommon; it does not infer that one mechanism has been neglected across ecology as a whole.
+
+# Superficiality
+
+The revision adds depth within approaches and breadth across approaches. The simulation analysis now includes two Lotka–Volterra interaction distributions, deterministic and stochastic consumer–resource structures, model-specific performance links, treatment-specific regressions, random-subset tests, random forests, and predicted-versus-realised synchrony. A new derivation identifies when the aggregate prediction should approach equality and when interaction heterogeneity should weaken it. A new experiment estimates performance curves independently, selects communities prospectively, matches simulated environmental autocorrelation, and partitions biomass variability into synchrony and population components. Detailed methods and diagnostics are organised across four supplements. These additions transform the study from three preliminary demonstrations into one integrated, mechanism-focused test.
+
+## Referee 2 overall assessment
+
+> Though the overarching topic is very near and dear to my own research interests, I find the authors' presentation and attempt to demonstrate their arguments very uncompelling. While I understand the motivation to approach the core questions from multiple angles---via a systematic review, model simulations, and analysis of experimental data---I feel that the combination has diluted and weakened rather than strengthened their study overall. Indeed, each of these elements struck me as extremely superficial compared to expectations. I also found a number of the authors' methodological decisions to be extremely challenging to rationalise and/or to have the potential to strongly undermine many of their key claims. I will explain these issues and others in greater detail below in the hope that they are useful for the authors going forward.
+
+**Response.** We took this criticism as a request for a deeper, more coherent study rather than simply more material. We narrowed the main claim and rebuilt the evidence around it. The revision adds a mechanistic consumer--resource model, a second interaction distribution within the Lotka--Volterra model, a theoretical derivation, treatment-specific synchrony tests, and a purpose-designed experiment. Detailed methods and diagnostics are now separated into four supplements so that the main manuscript states one question and follows it through theory, simulations, and experiment.
+
+## Referee 2 on the literature review
+
+> Overall, I found the inclusion of the systematic review to be terribly unconvincing. The total number of studies identified is extremely small, and the nature of how those studies are delineated renders the comparisons to be qualitative and thus not necessarily indicative of any statistically meaningful pattern. Without further information, we also cannot use such post hoc analyses to determine why 77 studies "addressed either interactions or species responses". This may purely be a pragmatic decision on the original authors because following one school of thought is a more viable publication strategy; indeed, just because a set of authors chose to follow one paradigm at best implicitly endorses that selected paradigm over all others (i.e., absence of evidence is not evidence of absence). I would recommend removal of this portion of the manuscript altogether. It might perhaps be an interesting contribution on its own, but I see very limited value for it here.
+
+**Response.** We agree that the review cannot support a statistical claim about the relative importance of the mechanisms or the reasons authors studied one mechanism. We removed the review figure, detailed methods, and detailed results from the main manuscript and eliminated the inference that the literature endorses one paradigm. The search and its descriptive result are retained in Supplementary Information 1 for transparency, and the main text uses only the limited observation that direct comparisons were uncommon within the prespecified search. We do not treat absence from this search as evidence that a mechanism is unimportant.
+
+# New simulation models
+
+We replaced reliance on one Lotka–Volterra configuration with four simulation runs spanning direct competition and mechanistic consumer–resource dynamics. Within Lotka–Volterra models, asymmetric uniform and symmetric lognormal interaction distributions test mean strength and pair-specific heterogeneity without negative competition coefficients. Consumer–resource models vary private versus shared resource use and allow effective interactions to change with temperature. Their key lesson is that community performance must be expressed on the scale of the predicted property: raw performance suits the Lotka–Volterra abundance link, whereas viability suits resource-mediated abundance. Despite these differences, actual community-performance variability remains the strongest predictor, showing generality beyond the original model assumptions.
+
+## Referee 1 point 4
+
+> This carries into the simulations too, which effectively assume a trait only enters through r_i. But traits also affect alpha_ij, and if you take alpha_ij as reflecting niche overlap in some sense, which is typically done, then most of the traditional focus on trials enters through alpha_ij. The simulations and the discussion sidestep this, which feels like an important gap that is left unresolved
+
+**Response.** We agree that the original simulation could not establish generality beyond traits acting through intrinsic growth. We therefore added a consumer--resource model in which species differ in temperature-dependent uptake and interact through shared and private resources. The resulting effective interactions can vary with temperature. We also vary resource-use overlap independently of the thermal response curves. We do not claim that all traits act only through growth; instead, we define community performance through a model-specific mapping from species performance to expected contribution to the focal aggregate property.
+
+## Referee 1 point 5
+
+> Related to that, how exactly were the alpha_ii values handled in the simulations? Usually it's the ratio of alpha_ii to alpha_ij that dominates stability, with large diagonals ensuring stability (in the dynamical sense) regardless of ri and alpha_ij, such that alpha_ii is often fixed at 1 for consistency. Was that the case here? A more mechanistic setup would be something like deriving a_ij from trait differences of some kind, which anchors these to a_ii, and would also let you actually probe niche vs stabilising differences. As it stands the sims don't really engage with what stability typically means in the theory, since there's very little integration of niche vs fitness differences, a_ij vs a_ii, or how traits map into either. The focus on traits simply via r_i just doesn’t align with how many community ecologists and functional ecologists think of traits.
+
+**Response.** We now state explicitly that diagonal self-interaction is fixed at 1 in both Lotka--Volterra runs. One run draws asymmetric interspecific coefficients from uniform distributions; the other draws symmetric coefficients from lognormal distributions. We also added the consumer--resource model, in which competitive effects emerge from resource overlap rather than being assigned as an unconstrained matrix. The revised paper does not claim to probe stabilising versus fitness differences or dynamical stability. It tests temporal variability of total abundance, and it states this scope explicitly.
+
+## Referee 2 on model choice and empirical connection
+
+> With regard to the simulations and empirical study, there are many facets which concern me regarding the authors' analyses and the extent to which the two perspectives can intuitively build off each other. First and foremost, if the simulations are to be conceptualised as a lens through which to understand these empirical data, why would a discrete-time Lotka-Volterra model be an appropriate description of population dynamics of organisms like ciliates? In my experience, if researchers wished to use the observed dynamics to estimate the parameters of a Lotka-Volterra model (for example, it would be much more common for researchers to fit the time series to a continuous-time model instead (e.g., Carrara et al 2015). This is relevant not only for understanding how fluctuations in T, which create variation in r_i(T), translate mathematically into fluctuations in N, but also whether we expect over-shoot dynamics, damped oscillations, or just smooth relaxation toward equilibrium densities.
+
+**Response.** We agree that the simulations should test the conceptual prediction rather than be presented as a fitted description of the ciliate system. The revised manuscript adds a continuous-time consumer--resource model and describes the experiment as an independent test, not a parameterisation of either simulation. Supplementary Information 4 also derives the Lotka--Volterra result in continuous time. **AUTHOR CHECK:** the revised main manuscript still calls the Lotka--Volterra model discrete-time, whereas Supplementary Information 2 and Supplementary Information 4 refer to a continuous-time implementation. We must reconcile the main text, equations, code, and this response before submission. We should not tell the referee that the Lotka--Volterra model was converted unless the final implementation confirms it.
+
+## Referee 2 on interaction distributions, exclusion, and immigration
+
+> In addition, I believe that there is are two potentially pathological deficiencies in the authors' model that confounds much of their analysis for the intermediate and strong interactions. First, the variance of the normal distribution used to parameterise competition coefficients in both scenarios is large enough that it is very probable to sample values < 0 which would be indicative of facilitation and not competition. Second, the mean of the normal distribution in both scenarios is large/strong enough that the species richness after the initial transients is likely much lower than the initial richness from their "experimental design". The methods indicate that this has been "fixed" by introducing a small amount of biomass at each time step (but see one of my minor comments below) which is not really defensible on mathematical nor ecological grounds; competitive exclusion does and can happen in real communities, and artificially preventing it here shouldn't be necessary. Indeed, it wouldn't be necessary at all should the authors have chosen to study the continuous-time version of the model.
+
+**Response.** We replaced the problematic interaction distributions. The revised Lotka--Volterra runs use nonnegative uniform and lognormal interspecific coefficients, with fixed diagonal self-interaction. We report results across the full interaction gradient and add a consumer--resource framework in which competition emerges from shared resource use. Immigration is now stated explicitly rather than hidden as a numerical device, and the empirical experiment includes a defined weekly recolonisation treatment. The theoretical supplement also shows where immigration enters the derivation and states that the approximation is most accurate when its contribution is weak. **AUTHOR CHECK:** confirm the exact Lotka--Volterra immigration implementation and justify its magnitude from the code before finalising this response.
+
+# New analytical findings
+
+We added a component that was absent from the original submission. Supplementary Information 4 derives an approximate relationship among community-performance variability, total-abundance variability, and weighted population variability in the Lotka–Volterra case. The interaction matrix enters through a weight comparing average interaction structure with pair-specific heterogeneity. When that weight approaches one, community-performance and aggregate-abundance variability should be nearly equal; when heterogeneity is larger, population variability contributes more. Realised median weights exceed 0.9 in both Lotka–Volterra experiments. This matters because it turns an empirical correlation into a conditional prediction and specifies the assumptions and failure modes that future tests can evaluate.
+
+## Referee 1 point 6
+
+> The results essentially show that your metric correlates with productivity better than SD of optima or mean optima. That's a fine statistical result, but I'm not sure what it buys us. There are plenty of other candidate metrics that would probably also do well (why not MAD or median or MAD/median, why not a multiple regression with SD, skewness, mean, and their interactions?). At this point it becomes a model building exercise for how to describe aggregate performance curves, and while your metric clearly does well, there isn't really a theoretical argument for why it should be the best or optimal or theoretically justified choice. The fact that it works under the simulations and in your experiment is encouraging, but this could partly be an artifact of the LV assumptions and the specific form of interactions used. In regimes with strong stabilising niche differences and weak fitness differences, for example, I'd expect interactions to matter a lot more because performance curves are essentially unimportant (dynamically, at least). It would help if this metric could be linked back to core theory in stability in some way (e.g., via storage effects) to provide a more causal argument for why it should be focused on.
+
+**Response.** We agree that predictive superiority over two trait moments was insufficient justification. Supplementary Information 4 now derives why the coefficient of variation of summed performance should track the coefficient of variation of total abundance under stated Lotka--Volterra conditions. It also identifies when the relationship should weaken, including large pair-specific interaction heterogeneity, demographic lags, infeasible quasi-equilibria, and non-negligible immigration. Supplementary Information 2 then tests a model outside the identity-link Lotka--Volterra case and shows that the performance-to-abundance link must be adapted to the focal model. We do not claim that the metric is universally optimal among every possible statistical summary, nor that it predicts dynamical stability or coexistence.
+
+**AUTHOR CHECK:** Supplementary Information 4 gives a conditional approximation, not an unconditional proof of 100% explanatory power. The final manuscript and response should reserve near-complete explanation for the limiting case in which the assumptions hold and the interaction weight approaches one.
+
+# New experiment
+
+We replaced the retrospective empirical analysis with a purpose-designed forecast test. Thermal performance curves were estimated for five ciliates across seven constant temperatures. Before observing community dynamics, we selected two-, three-, and four-species assemblages spanning low, intermediate, and high predicted performance variability under four predefined temperature sequences. Those sequences use reddened 1/f forcing matched to the Lotka–Volterra environment. Actual community-performance variability explains 67% of detrended biomass variability, compared with 40% for the null metric, while a richness-aware model explains 83%. The design matters because predictions were fixed before the community experiment and were not tuned to its biomass observations.
+
+## Referee 2 on stronger evidence for an interaction-free prediction
+
+> Circling back to the broader point building off the historic studies from Loreau & Mazancourt, if fluctuations in r are translated into fluctuations in N as mediated by the inverse interaction matrix A^-1, does it make sense to claim the predictions are "interaction free"? From my perspective, a much stronger evidence base would be to find that species-specific density fluctuations are accurately captured by a model that assumes all interspecific interaction strengths are zero. Or where the authors parameterised a Lotka-Volterra model with monoculture and pairwise experiments (without fluctuating T), observed that some to many pairwise interspecific interaction strengths are inferred to be comparatively strong (e.g., closer to the intraspecific value of 1 than to 0), and yet despite this the "interaction free" model still captured species-specific density fluctuations.
+
+**Response.** We agree that "interaction free" was misleading and have removed that phrase as a description of the realised dynamics. Our predictors do not use an interaction matrix, but the communities are interacting and those interactions alter their populations. We also agree that predicting species-specific fluctuations would be a stronger and different claim; we do not make it. Instead, the revised experiment provides a prospective test at the scale of our stated outcome. Monoculture thermal response curves were measured independently, communities were selected from their predicted aggregate variability, and total biomass variability was then observed under fluctuating temperatures. The Discussion explicitly limits the inference to aggregate temporal variability.
+
+# Miscellaneous
+
+We appreciate the referees’ recognition that combining conceptual development, simulations, and empirical evidence is valuable. We retained that integration and gave each a distinct role. The revised figures clarify environmental forcing, uncapped summed performance, response variables, and synchrony. Methods now place the `ranger` citation with random forests, identify the Lotka–Volterra summation index, state self-interaction and immigration assumptions, and remove undefined insurance and portfolio terminology from the narrative. We also corrected the original wording and labels. Several comments require final consistency checks, especially the Lotka–Volterra time formulation, equation rendering, and unresolved Word comments, which we flag rather than treating as completed.
+
+## Referee 1 opening assessment
+
+> The paper proposes a new approach to understanding and quantifying community stability, essentially taken as the coefficient of variation of combined species responses across a gradient, demonstrating that this approach outperforms simpler descriptors of performance based on single-species or single traits. Overall the paper is nicely put together and written very well. The combination of lit review, simulations, and an experimental test is ambitious and something you rarely see, and the attempt to find a more operational measure of stability is a worthwhile goal. That said, I have a number of concerns and questions:
+
+**Response.** We thank the referee for recognising the value of an operational measure and the combination of approaches. We retained that integration but narrowed the outcome, strengthened each component, and clarified the limits of the inference.
+
+## Referee 3 opening assessment
+
+> This manuscript by Polazzo et al. describes a novel trait based metric called a “community performance curve” which the authors describe as a powerful tool to describe community stability. I believe the metric the authors describe is novel and extremely useful, solves some problems with many trait based metrics, and has the potential to fill a niche within community ecology. I have, however, some major issues with the framing of the paper that make it difficult for me to assess how this tool fits into the existing literature and whether or not it provides what the authors market it for.
+
+**Response.** We thank the referee for identifying the potential value of the metric and agree that its place in the literature was unclear. The revised manuscript now defines the stability component, removes the paradigm framing, explains what information is retained beyond trait moments, and states that the method predicts aggregate temporal variability rather than every form of ecological stability.
+
+## Referee 1 point 9
+
+> Two quick points: for Fig 4, is the outcome CV of community biomass or just log10? The methods (L469) say CV, so I assume it's just a labelling choice, but worth clarifying. Also, in the equation on L 374, I think the summation should just be over j, not i, so as to align with typical LV where the summation is taken over the competitor with i fixed. Or am I missing something here?
+
+**Response.** Both issues have been revised. The new experiment uses the standard deviation of detrended total-community biomass because detrending centres the mean near zero and makes a coefficient of variation unstable; the Methods and Figure 3 caption now state this outcome. In the Lotka--Volterra equation, focal species $i$ is fixed and the competitive sum is over species $j$. **AUTHOR CHECK:** confirm the rendered Word equation, not only the surrounding prose, before submission.
+
+## Referee 2 minor comment on aggregation
+
+> L73) The authors seem to be conflating two different data aggregation processes here into one, and I think for clarity it helps to explain both to the reader. The first is the idea that individual species have continuous environmental response curves, but that we can summarise these through a single value (e.g., T at the optimum). The second is the idea that, given multiple species, all we need to know is the mean of these single values across all species. Both have the potential to be misleading or to throw away useful data.
+
+**Response.** We now separate these two losses of information. The revised Introduction first explains how an optimum compresses a nonlinear species response curve, then explains how a community mean or variance further compresses differences among species. The community-performance curve retains the species response shapes before aggregation.
+
+## Referee 2 minor comment on Figure 1
+
+> Fig 1) I think it would be helpful to see example fluctuating time series of T at the top of the middle and rightmost columns. Also, the thick black lines cannot be consistent with the authors' definition of CommunityPerformance(T) since the maximum values should not be capped at 1.
+
+**Response.** Figure 1 has been redesigned to show the environmental sequence and the corresponding species-level and summed community-performance time series. The caption now defines the thick black line as the sum of the species curves; it is not capped at one.
+
+## Referee 2 minor comment on `ranger`
+
+> L370) Why is the ranger package being cited regarding Lotka-Volterra models?
+
+**Response.** The citation has been moved to the random-forest analysis, where `ranger` is used. It is no longer presented as a Lotka--Volterra reference.
+
+## Referee 2 minor comment on immigration
+
+> L386) The methods indicate that a small unit of biomass is added at each time step. At a minimum, the authors should declare this value explicitly. That said, the code available in the github repository indicates that a small value was actually added to r (https://github.com/opetchey/community.simulator/blob/9770f60d31ac6fca7015013e3edd0240045ba13a/R/simulator_lv.R#L46). In either case, this should not be necessary should the authors follow my suggestion and move to a continuous-time model.
+
+**Response.** The revised Methods explicitly state the immigration term, and Supplementary Information 4 shows how immigration modifies the analytical identity and limits the approximation. **AUTHOR CHECK:** the main text currently says that one unit of biomass is added to every species at every time step, while the referee reports that the earlier code added a value to $r$. We must verify the current code and replace this response with the exact implementation and ecological justification.
+
+## Referee 3 minor comment on wording
+
+> Line 51 – damped should be dampened
+
+**Response.** The sentence has been removed in the reframing, so the wording issue no longer occurs.
+
+## Referee 3 minor comment on undefined mechanisms
+
+> Lines 59-60 – Neither insurance effects nor portfolio effects defined – maybe remove?
+
+**Response.** These undefined terms have been removed from the narrative. The revised Introduction explains temporal stability directly through population variability, covariance, and synchrony.
+
+## Referee 3 minor comment on a theoretical figure
+
+> Maybe include a theoretical figure that shows what you mean when you say that species responses INDEPENDENT of interactions is likely to influence stability.
+
+**Response.** Revised Figure 1 now shows species response curves, their sum, environmental sequences, and the resulting actual and null community-performance variability. We also changed the language: the response curves are measured or specified without interspecific effects, but realised community dynamics are not independent of interactions.
+
+## Referee 3 minor comment on interaction estimates
+
+> Lines 237-240 – This is a really good point and maybe should even be moved up into the intro. All of our measures of interactions are abstractions so we may be estimating them poorly.
+
+**Response.** We moved this motivation into the Introduction. The revised paper asks whether aggregate temporal stability can be predicted when detailed interaction strengths are unavailable, and the final paragraph returns to the practical difficulty of estimating complete interaction networks.
+
+# Final checks before submission
+
+The following items are intentionally unresolved in this draft and require author confirmation:
+
+1. Reconcile the discrete-time description of the Lotka--Volterra model in the main manuscript with the continuous-time implementation and derivation described in Supplementary Information 2 and 4.
+2. Verify the exact immigration term and its location in the current simulation code.
+3. Keep the analytical claim conditional. Equation 32 in Supplementary Information 4 is approximate and assumption-dependent; it is not a universal proof of 100% explanation.
+4. Confirm that every equation and index renders correctly in the final submission PDF.
+5. Decide whether to add a formal selection-effect analysis or retain the qualified response to Referee 1 point 8.
+6. Resolve the four open Word comments and complete a final grammatical and numerical consistency check.

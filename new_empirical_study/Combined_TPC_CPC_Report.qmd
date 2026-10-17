@@ -1,11 +1,12 @@
 ---
 title: "Supplementary Information 3 - Empirical study"
-authors: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Owen L. Petchey"
+authors: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Stephan B. Munch, Owen L. Petchey"
 format:
   html:
     toc: true
     toc-location: left
     number-sections: true
+    html-math-method: mathml
 editor: visual
 echo: false
 embed-resources: true
@@ -47,6 +48,23 @@ library(ggrepel)
 library(readxl)
 
 conflicted::conflicts_prefer(dplyr::filter)
+
+find_repo_root <- function(start = getwd()) {
+  current <- normalizePath(start, winslash = "/", mustWork = TRUE)
+  repeat {
+    if (file.exists(file.path(current, "CPCs_predict_CommunityStability.Rproj"))) {
+      return(current)
+    }
+    parent <- dirname(current)
+    if (identical(parent, current)) {
+      stop("Could not locate the CPCs_predict_CommunityStability repository root.")
+    }
+    current <- parent
+  }
+}
+
+repo_root <- find_repo_root()
+empirical_root <- file.path(repo_root, "new_empirical_study")
 ```
 
 ```{r}
@@ -54,9 +72,9 @@ conflicted::conflicts_prefer(dplyr::filter)
 #| label: load-data-sets
 
 # Load raw data sets
-ts_df <- read.csv("~/Documents/GitHub/CPCs_predict_CommunityStability/new_empirical_study/data/combined_timeseries_df.csv")
+ts_df <- read.csv(file.path(empirical_root, "data", "combined_timeseries_df.csv"))
 
-TPC_timeseries <- read.csv("~/Documents/GitHub/CPCs_predict_CommunityStability/new_empirical_study/data/TPC_timeseries_df.csv")
+TPC_timeseries <- read.csv(file.path(empirical_root, "data", "TPC_timeseries_df.csv"))
 
 ts_df_raw <- ts_df
 TPC_timeseries_raw <- TPC_timeseries
@@ -843,14 +861,7 @@ diagnose_lm_transformations(CPC_CV_df, "sd_T_opt")
 
 # Scope of this supplement
 
-This supplement provides the empirical methods, data-processing steps, and
-supporting analyses for the ciliate community experiment. The main manuscript
-reports the central empirical test of whether variability in community
-performance predicts community biomass variability. The material below gives
-the experimental design, construction of empirical thermal performance curves,
-calculation of null and actual CV(CP), detrending of biomass time series, model
-outputs, and mechanistic analyses based on performance synchrony and population
-variability.
+This supplement provides the empirical methods, data-processing steps, and supporting analyses for the ciliate community experiment. The main manuscript reports the central empirical test of whether variability in community performance predicts community biomass variability. The material below gives the experimental design, construction of empirical thermal performance curves, calculation of null and actual CV(CP), detrending of biomass time series, model outputs, and mechanistic analyses based on performance synchrony and population variability.
 
 # Empirical study
 
@@ -1098,6 +1109,7 @@ plot_trend
 ### Main Result
 
 <!-- Each performance summary was tested in a linear model including species richness and an interaction term between performance summary and richness.  -->
+
 Variability of intrinsic community performance was positively related to variability of community biomass (@fig-4). $CV(CP_{\text{actual}})$ explained more variation in biomass variability ($R^2=$ `r obs_stats$r2_text`) than $CV(CP_{\text{null}})$ ($R^2=$ `r naive_stats$r2_text`). Communities with higher $CV(CP_{\text{actual/null}})$ had higher temporal biomass variability ($β_{actual}$ = `r obs_stats$beta_text`, *p* = `r obs_stats$p_text`; $β_{null}$ = `r naive_stats$beta_text`, *p* = `r naive_stats$p_text`).
 
 Similarly, trait summaries were also predictive of stability, with $|\bar{T}_{opt} - \bar{T}|$ explaining less variance ($R^2=$ `r topt_mean_stats$r2_text`) than $sd({T}_{opt})$ ($R^2=$ `r topt_sd_stats$r2_text`). The larger the distance between the average temperature and the average thermal optimum was (large $|\bar{T}_{opt} - \bar{T}|$), the more variable the communities were (β = `r topt_mean_stats$beta_text`, *p* = `r topt_mean_stats$p_text`). On the other hand, the spread of the thermal optima ($sd({T}_{opt})$) had a stabilising effect ( β = `r topt_sd_stats$beta_text`, *p* = `r topt_sd_stats$p_text`).

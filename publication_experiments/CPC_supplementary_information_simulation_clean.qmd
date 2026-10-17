@@ -1,7 +1,7 @@
 ---
 title: "Supplementary Information 2 - Simulation studies"
-subtitle: "Community performance variability as a predictor of community stability"
-authors: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Owen L. Petchey"
+subtitle: "Community performance variability as a predictor of temporal stability"
+authors: "Francesco Polazzo, Til Hämmig, Paula Eileen Stöckli, Shyamolina Ghosh, Stephan B. Munch, Owen L. Petchey"
 editor: source
 execute:
   echo: false
@@ -56,7 +56,22 @@ library(tibble)
 library(tidyr)
 library(viridisLite)
 
-experiment_root <- file.path(getwd(), "data/samp_int_1")
+find_repo_root <- function(start = getwd()) {
+  current <- normalizePath(start, winslash = "/", mustWork = TRUE)
+  repeat {
+    if (file.exists(file.path(current, "CPCs_predict_CommunityStability.Rproj"))) {
+      return(current)
+    }
+    parent <- dirname(current)
+    if (identical(parent, current)) {
+      stop("Could not locate the CPCs_predict_CommunityStability repository root.")
+    }
+    current <- parent
+  }
+}
+
+repo_root <- find_repo_root()
+experiment_root <- file.path(repo_root, "publication_experiments", "data")
 selected_experiments <- c("LV1", "LV2", "CR1", "CR2")
 
 `%||%` <- function(x, y) {
@@ -104,6 +119,16 @@ format_experiment_label <- function(x) {
 }
 
 case_spec_value <- function(case_spec, path, default = NA) {
+  # Current simulation outputs store treatment settings as a flat named list
+  # (for example, `traits.birth_optimum.mean`). Retain the nested lookup as a
+  # fallback so the document also works with older output files.
+  if (is.list(case_spec) && !is.null(case_spec[[path]])) {
+    value <- case_spec[[path]]
+    if (length(value) == 1) {
+      return(value)
+    }
+  }
+
   parts <- strsplit(path, ".", fixed = TRUE)[[1]]
   value <- case_spec
   for (part in parts) {
@@ -118,41 +143,18 @@ case_spec_value <- function(case_spec, path, default = NA) {
   value
 }
 
-treatment_value <- function(treatment_values, path, default = NA) {
-  if (!is.list(treatment_values) || is.null(treatment_values[[path]])) {
-    return(default)
-  }
-  value <- treatment_values[[path]]
-  if (length(value) != 1) {
-    return(default)
-  }
-  value
-}
-
-case_or_treatment_value <- function(case_spec, treatment_values, path, default = NA) {
-  value <- case_spec_value(case_spec, path, default)
-  if (identical(value, default) || (length(value) == 1 && is.na(value))) {
-    value <- treatment_value(treatment_values, path, default)
-  }
-  value
-}
-
 case_spec_numeric <- function(data, path, default = NA_real_) {
-  case_specs <- if ("case_spec" %in% names(data)) data$case_spec else vector("list", nrow(data))
-  treatment_values <- if ("treatment_values" %in% names(data)) data$treatment_values else vector("list", nrow(data))
   vapply(
-    seq_len(nrow(data)),
-    function(i) as.numeric(case_or_treatment_value(case_specs[[i]], treatment_values[[i]], path, default)),
+    data$treatment_values %||% data$case_spec,
+    function(spec) as.numeric(case_spec_value(spec, path, default)),
     numeric(1)
   )
 }
 
 case_spec_character <- function(data, path, default = NA_character_) {
-  case_specs <- if ("case_spec" %in% names(data)) data$case_spec else vector("list", nrow(data))
-  treatment_values <- if ("treatment_values" %in% names(data)) data$treatment_values else vector("list", nrow(data))
   vapply(
-    seq_len(nrow(data)),
-    function(i) as.character(case_or_treatment_value(case_specs[[i]], treatment_values[[i]], path, default)),
+    data$treatment_values %||% data$case_spec,
+    function(spec) as.character(case_spec_value(spec, path, default)),
     character(1)
   )
 }
@@ -177,10 +179,8 @@ standardise_experiment <- function(experiment) {
   dat <- read_experiment(experiment)
 
   if (grepl("^LV", experiment)) {
-    labels <- case_spec_character(dat, "interactions.selected.label")
-    if ("interaction_treatment_label" %in% names(dat)) {
-      labels <- ifelse(is.na(labels), as.character(dat$interaction_treatment_label), labels)
-    }
+    labels <- dat$interaction_treatment_label %||%
+      case_spec_character(dat, "interactions.selected.label")
     dat |>
       mutate(
         treatment_label = labels,
@@ -1050,7 +1050,7 @@ kable(
 
 ```{r}
 #| label: fig-main-simulation-results
-#| fig-cap: 'Explanatory power of community performance metrics across the four simulation experiments. Panel (a) shows linear-model R² values fitted within each run, treatment level, and temperature series; models were not grouped by mean thermal optimum. The x-axis gives nominal interaction strength for LV 1 and LV 2 and resource sharing for CR 1 and CR 2, where 0 indicates no shared resource and 1 indicates fully shared resource use. Facets show actual $CP$ variability ($CV(CP_{\text{actual}})$), null $CP$ variability ($CV(CP_{\text{null}})$), and trait summaries. For LV 1 and LV 2, actual and null $CP$ variability are based on raw community performance. For CR 1 and CR 2, actual and null $CP$ variability are based on binary viability $CP$. Trait summaries are the distance between realised mean optimum and mean environmental temperature, the realised standard deviation of optima, and their interaction. Panel (b) shows random-subset robustness for $CV(CP_{\text{actual}})$. Panel (c) shows random-forest permutation importance for the same predictor set, scaled within each run. Panel (d) compares observed instability with out-of-bag predicted instability.'
+#| fig-cap: 'Performance of community-performance-based forecasts across four simulation runs. Panel (a) shows the explanatory power of actual community-performance variability, null community-performance variability, and trait summaries for temporal variability in total community abundance. Separate linear models were fitted within each simulation run, treatment, and temperature time series. Small points are grouped R² values; large points and horizontal bars show the median and 50% and 80% quantile intervals, and shaded half-eye distributions show their density. For Lotka--Volterra (LV), the horizontal axis is nominal interspecific interaction strength; for consumer--resource (CR), it is shared-resource use from entirely private resources (0) to fully shared resource use (1). Actual community performance is evaluated over the experienced temperature sequence; null community performance is evaluated over a uniform distribution spanning the environmental range. LV community performance is summed intrinsic growth rate, whereas CR community performance is the number of species with positive intrinsic growth. The trait-summary model contains absolute mean thermal mismatch, thermal-optimum spread, and their interaction. Panel (b) shows R² values after each run is randomly partitioned into subsets of approximately 25 communities. Panel (c) shows permutation importance from 1,000-tree random forests containing actual and null community-performance variability, mean thermal mismatch, thermal-optimum spread, richness, and interaction strength or resource sharing; importance is scaled within each run so its maximum is one. Panel (d) compares observed total-abundance variability with out-of-bag random-forest predictions. Points are communities, solid lines are linear fits, dashed lines are 1:1 relationships, and labels report out-of-bag R². LV 1 uses asymmetric uniform competition, LV 2 symmetric log-normal competition, CR 1 deterministic resource sharing, and CR 2 stochastic beta-distributed resource sharing.'
 #| fig-width: 15
 #| fig-height: 10.5
 #| fig-cap-location: bottom
@@ -1327,18 +1327,16 @@ r2_summary_by_treatment_table <- bind_rows(
   summarise(
     groups = sum(is.finite(r2)),
     mean_r2 = mean(r2, na.rm = TRUE),
-    median_r2 = median(r2, na.rm = TRUE),
     .groups = "drop"
   ) |>
   mutate(
-    mean_r2 = round(mean_r2, 3),
-    median_r2 = round(median_r2, 3)
+    mean_r2 = round(mean_r2, 3)
   ) |>
   arrange(framework, experiment_label, grouping, treatment_plot, predictor)
 
 kable(
   r2_summary_by_treatment_table,
-  align = c("l", "l", "l", "c", "l", "r", "r", "r")
+  align = c("l", "l", "l", "c", "l", "r", "r")
 )
 ```
 

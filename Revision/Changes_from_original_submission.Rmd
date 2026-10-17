@@ -1,0 +1,145 @@
+---
+title: "Changes from the original submission"
+subtitle: "Community performance curves predict temporal stability despite interaction effects"
+date: "2026-09-30"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Purpose and scope
+
+This document records the substantive differences between the original submission (`old/CPCs_ms_Polazzo_2026.docx`) and the revised submission package (`new/CPCs_reframed_equation_numbered.docx` plus Supplementary Information 1--4). It distinguishes changes that are directly supported by the supplied files from points that remain uncertain or internally inconsistent. The revised paper is not a light edit. It narrows the claim to temporal variability of aggregate community properties, adds a second mechanistic model class, replaces the previous empirical reanalysis with a purpose-designed experiment, adds a new analytical derivation, and moves detailed supporting material into four supplements.
+
+# Document-level restructuring
+
+| Element | Original submission | Revised submission | Significance |
+|---|---|---|---|
+| Title | *Community performance curves predict community stability despite interaction effects* | *Community performance curves predict temporal stability despite interaction effects* | The word *temporal* identifies the specific stability component and directly addresses the referees' concern that "stability" was used too broadly. |
+| Main-text scope | Approximately 7,470 extracted words, 267 paragraphs, 41 heading paragraphs, and an extended-data section within the manuscript | Approximately 6,430 extracted words, 145 paragraphs, 14 heading paragraphs, with detailed material moved to four supplements | The main narrative is shorter and more focused, while the evidence base is broader. |
+| Supplementary package | Extended data embedded in the manuscript | Four standalone supplements: literature review, simulations, empirical study, and analytical derivation | The revision separates reproducibility and technical detail from the central argument. |
+| Figures in the main Word file | Ten embedded images | Four embedded images | The main paper now centres on the conceptual framework, simulation synthesis, empirical prediction, and synchrony mechanism. |
+| Authorship | Four authors | Paula Eileen Stoeckli is added as an author | This is a substantive authorship change that should be reflected consistently in submission metadata and contribution statements. |
+
+The extracted word counts are approximate because Word equations and some embedded objects are not represented as ordinary paragraph text.
+
+# Change in scientific framing
+
+## Stability is now defined precisely
+
+The original Introduction moved between dynamical stability, coexistence, and variability in total biomass. It opened with May and Allesina and described a broad contest between interaction-based and response-based paradigms. The revised Introduction instead defines the outcome as the temporal stability of aggregate abundance, biomass, or productivity under continuing environmental variation. It explicitly distinguishes this outcome from return to equilibrium, local coexistence, and persistence. The title, abstract, first paragraph, Methods, Results, and Discussion now use this narrower scope.
+
+This change directly addresses Referee 1 points 1, 2, and 7; Referee 2's central concern about incompatible meanings of stability; and Referee 3 points 1 and 4. It also removes the strongest claims that the work overturns a century-old paradigm. The revised paper asks a more defensible predictive question: how much information about aggregate temporal variability remains in species environmental responses when detailed interaction matrices are unavailable?
+
+## The interaction-versus-response dichotomy is softened
+
+The original manuscript described two competing perspectives and argued that ecology had overemphasised interactions. The revised manuscript states that interactions clearly affect population dynamics and covariance, then asks whether aggregate stability can nevertheless be forecast from response structure. The Discussion now explains that interactions can change synchrony and population variability in opposing directions, allowing their effects to offset at the aggregate level. This is a reconciliation rather than a claim that interactions are unimportant.
+
+## Trait language is clarified
+
+The original text sometimes treated traits as single values and described performance curves as a "meta-trait." The revised Introduction distinguishes single trait moments from the full nonlinear response shape. It explains what optima fail to capture: breadth, skew, overlap, and complementarity. The revision retains the metatrait terminology but uses it to describe an integrated response profile rather than to imply that ecological theory normally uses only one trait.
+
+## Literature review is reduced and moved
+
+The original main text contained extensive review methods, results, a Sankey figure, and a strong conclusion based on 12 retained studies. In the revised main text, the review is reduced to a short contextual statement and the detailed method and result are moved to Supplementary Information 1. The retained review still reports 12 studies and therefore does not resolve the concern about small sample size; it instead carries less argumentative weight.
+
+# New simulation programme
+
+## Expansion from one model setup to two model classes
+
+The original submission reported one factorial Lotka--Volterra simulation design. The revised submission reports four simulation runs:
+
+1. two Lotka--Volterra runs, differing in their interaction distributions; and
+2. two consumer--resource runs, differing in deterministic versus stochastic allocation of shared and private resource use.
+
+Each run contains 7,290 valid simulations. The Lotka--Volterra runs vary species richness, thermal optima, thermal breadth, interaction strength, temperature sequence, and community replication. The consumer--resource runs parallel this design but generate competition mechanistically through resource uptake and resource sharing. Because uptake is temperature dependent, the consumer--resource model also tests a case in which effective interaction strengths vary with temperature.
+
+This is a major increase in both depth and breadth. It addresses the concern that the original finding might be an artefact of a single Lotka--Volterra formulation and a single interaction distribution.
+
+## Interaction distributions are revised
+
+The original design described interspecific coefficients drawn from normal or uniform distributions in ways that prompted concern about negative coefficients and unintended facilitation. The revised Lotka--Volterra programme uses asymmetric uniform competition in one run and symmetric lognormal competition in the other, with fixed intraspecific competition. The lognormal treatment adds pair-specific heterogeneity without drawing negative interaction coefficients. Supplementary Information 4 reports medians of 0, 0.25, 0.5, 0.75, and 1 and fixes diagonal self-interaction at 1.
+
+## Community performance is generalised through a model-specific link
+
+The original community performance curve was always the sum of raw intrinsic growth-rate curves. The consumer--resource results showed that this cannot be treated as a universal recipe. The revision defines community performance for a target community variable as
+
+\[
+CP_y(T)=\sum_i f_{model,y}(P_i(T)),
+\]
+
+where the link function maps raw species performance to expected contribution to the focal community variable. The identity link is used for Lotka--Volterra abundance, whereas a binary viability link is used for consumer--resource abundance. This is conceptually important: the framework is generalised beyond the assumptions of the original Lotka--Volterra case, while requiring the transformation to be matched to the model and response variable.
+
+## New simulation results
+
+The revised main text reports that actual community-performance variability explains, on average, 84% of variation in total-abundance variability in the Lotka--Volterra runs and 91% in the consumer--resource runs. In the Lotka--Volterra runs, explanatory power declines from 0.99 without interactions to 0.75 at the highest interaction strength. In the consumer--resource runs, the viability-based actual metric does not decline across the resource-sharing gradient. Trait-summary models are substantially weaker. Random forests identify actual community-performance variability as the most important predictor in all four runs, with out-of-bag R-squared values from 0.942 to 0.97.
+
+The manuscript also adds a synchrony analysis. Increasing competition or resource sharing reduces the ability of thermal performance curves to predict realised abundance synchrony. The aggregate community-performance prediction remains strong despite this loss of species-level synchrony prediction. This provides direct evidence that interactions alter component dynamics even when aggregate variability remains predictable.
+
+# New analytical findings
+
+Supplementary Information 4 is entirely new. It links community-performance variability to total-abundance variability in the Lotka--Volterra case. Under positive and bounded trajectories, weak immigration, a slowly varying environment, feasible attracting quasi-equilibria, a fixed effective interaction matrix, and an ensemble approximation for pair-specific deviations, it derives
+
+\[
+CV_{CP}^2 \approx pCV_B^2 + (1-p)CV_{sp}^2.
+\]
+
+The weight $p$ compares the average interaction structure with pair-specific interaction heterogeneity. When $p$ is close to one, community-performance variability and total-abundance variability are expected to be nearly one-to-one. Realised median $p$ is reported above 0.9 across all interaction treatments in both Lotka--Volterra experiments.
+
+This derivation supplies the theoretical expectation that the original submission lacked. It explains why strong interactions need not erase the aggregate signal and predicts when performance should be weaker: pair-specific interaction heterogeneity, demographic lags, low abundance maintained by immigration, infeasible equilibria, or a nonlinear performance-to-abundance link.
+
+**Important qualification.** The supplement presents a conditional approximation, not an unconditional proof that community performance explains 100% of community variability. A claim of "100% explanatory power" is defensible only as an idealised limiting case when the stated assumptions hold and $p$ approaches one. The response letter and manuscript should not describe Equation 32 as a universal exact identity.
+
+# New empirical experiment
+
+## Replacement of the previous empirical analysis
+
+The original manuscript reanalysed an existing 60-day ciliate experiment with three alternating temperature regimes, three nutrient concentrations, 243 microcosms, and no continuously varying temperature series. Only null community-performance variability could be calculated, and it explained 24% of variation in biomass variability.
+
+The revised manuscript reports a new, purpose-designed experiment. Five ciliate thermal performance curves were estimated independently at seven constant temperatures. Candidate communities of two, three, or four species were then ranked by predicted actual community-performance variability within each of four environmental sequences. Low, intermediate, and high predicted compositions were selected before the community experiment began. The design crossed three richness levels, three performance-variability classes, four temperature sequences, and three replicates, giving 108 microcosms sampled 27 times over 37 days.
+
+## Environmental forcing now matches the simulation logic
+
+The four experimental temperature sequences were drawn from a normal distribution with mean 22.5 degrees C and standard deviation 3.5 degrees C, with reddened 1/f noise and exponent 0.8. This matches the type of temporally autocorrelated forcing used in the Lotka--Volterra simulations and permits calculation of actual, not only null, community-performance variability.
+
+## Stronger empirical prediction
+
+Actual community-performance variability explains 67% of variation in detrended total-community biomass variability, whereas null community-performance variability explains 40%. A model including actual community-performance variability, richness, temperature sequence, and the interaction between richness and performance variability explains 83% of the variation. Trait summaries are weaker as single predictors. Performance synchrony explains 65% of realised biomass synchrony, and the structural equation model links community performance to both synchrony and mean population variability.
+
+This design turns the empirical test from a retrospective association into a prospective forecast: species response curves and community selection were fixed before the community time series were observed.
+
+# Figure and methods changes
+
+* Figure 1 now includes environmental time series and species-level performance time series alongside the summed community curve. Its caption states that the black line is the uncapped sum of species performance.
+* The original review figure is removed from the main manuscript.
+* The main simulation figure now synthesises all four runs, random-subset robustness, permutation importance, and out-of-bag prediction.
+* The empirical figure now reports detrended biomass variability and separates actual community performance, null community performance, thermal mismatch, and thermal-optimum spread.
+* A new figure compares predicted and realised synchrony across simulations and the experiment.
+* The Lotka--Volterra summation is described over competitor $j$ with focal species $i$ fixed.
+* The `ranger` citation is now attached to the random-forest analysis, not to the Lotka--Volterra model.
+* The revised Methods explicitly state the immigration amount in the Lotka--Volterra description and the weekly recolonisation procedure in the experiment.
+
+# Relationship to prior theory
+
+The revision now places the contribution alongside Ives et al. (1999), Loreau and de Mazancourt (2008, 2013), and Danet et al. (2025). Those studies establish that environmental responses, population variability, synchrony, competition, and food-web structure jointly shape temporal stability. The revised paper's distinctive contribution is narrower: it constructs a measurable aggregate of independently estimated species response curves, tests its predictive performance without estimating the interaction matrix, generalises its construction across two model classes, derives conditions for a near one-to-one relationship in the Lotka--Volterra case, and validates the prediction prospectively in a purpose-designed experiment.
+
+# Items requiring author verification before submission
+
+1. **Discrete- versus continuous-time Lotka--Volterra model.** The revised main manuscript calls the model discrete-time in the Introduction and Methods. Supplementary Information 2 points to continuous-time implementation functions, and Supplementary Information 4 derives a continuous-time differential equation. These descriptions cannot all be correct. The manuscript, supplements, code, and response letter must use one consistent formulation.
+2. **Strength of the analytical claim.** Supplementary Information 4 gives an approximate, conditional derivation. Replace any unqualified statement that it "proves 100%" of variability with language tied to the $p\rightarrow1$ limiting case and the stated assumptions.
+3. **Model equation display.** Several equations are not recoverable through ordinary Word paragraph extraction. Confirm in the final Word/PDF that all symbols, indices, and equation numbers render correctly, especially the Lotka--Volterra update and the consumer--resource equations.
+4. **Empirical response variable.** The revised experiment uses the standard deviation of detrended total biomass, not the coefficient of variation, because detrending centres the mean near zero. Use "biomass variability" rather than "CV of biomass" for this result throughout the response letter.
+5. **Literature review status.** The review remains in Supplementary Information 1 despite Referee 2's recommendation to remove it. The response should say it was shortened and moved, not removed.
+6. **Selection-effect concern.** The revised framing and experiment reduce the risk of confusing high performance at one temperature with temporal stability, but the supplied files do not contain a dedicated selection-effect analysis. A response claiming that this concern was formally tested would be unsupported.
+7. **Unresolved Word comments.** The revised manuscript contains four unresolved comments, including a question attached to the consumer--resource viability description. Resolve or remove them before submission.
+8. **Terminology and copy-editing.** The revised text contains several visible placeholders or extraction-sensitive equations and some grammatical slips (for example, "four temperature treatment" and "three replicate"). A final scientific copy-edit and rendered-equation check is needed.
+
+# Overall assessment
+
+The revision directly addresses the referees' largest conceptual objections and adds substantial new evidence. Its strongest changes are the precise definition of temporal aggregate stability, the consumer--resource generalisation, the interaction-distribution comparison, the conditional analytical derivation, and the prospective experiment. The main remaining risk is internal consistency, especially the time formulation of the Lotka--Volterra model and the temptation to overstate the analytical result as an exact or universal proof.

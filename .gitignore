@@ -1,8 +1,10 @@
-*.Rproj.user
-*.Rhistory
-*.RData
-*.Ruserdata
-*.RDS
-*.db
-*.DS_Store
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
 .DS_Store
+.quarto/
+**/.quarto/
+**/~$*
+publication_experiments/tmp/
+publication_experiments/simulation_current.html
