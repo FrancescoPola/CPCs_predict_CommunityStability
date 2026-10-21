@@ -6,5 +6,5 @@
 .quarto/
 **/.quarto/
 **/~$*
-publication_experiments/tmp/
-publication_experiments/simulation_current.html
+archive/legacy-layout/publication_experiments/tmp/
+archive/legacy-layout/publication_experiments/simulation_current.html
